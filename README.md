@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="assets/embraos-qnm-banner.png" alt="embraOS" width="100%">
+</p>
+
 # embraOS-QNM — Application Specific AI Model
 
 **Architecture-layer constraints for language models.**
