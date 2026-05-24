@@ -8,7 +8,7 @@ We welcome bug reports and feature requests via [GitHub Issues](https://github.c
 
 - A clear description of the problem or suggestion
 - Steps to reproduce (for bugs)
-- Your environment (OS, Rust version, hardware)
+- Your environment (OS, hardware/accelerator, and relevant tool/runtime versions)
 
 ## Pull Requests
 
