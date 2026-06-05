@@ -65,17 +65,40 @@ A persistent state register that encodes invariant boundary conditions — the m
 
 ---
 
+## Architecture
+
+The full technical spec is in **[ARCHITECTURE.md](ARCHITECTURE.md)**: the three components in depth, the **Realized Implementation Architecture** (what has actually landed in code, with an iteration log), and a **Running & Testing** guide.
+
+---
+
 ## Project Status
 
-**Phase:** Pre-implementation — theory and architecture drafting.
+**Phase:** First scaffold (June 2026). The **LLM Core** (a small from-scratch transformer) and the **injection seam** that routes its hidden states through the other components are implemented and tested in Python + PyTorch. The **GNN Fabric** and **World-State** are honest no-ops for now — the World-State's `P_ψ` is the identity map, because ψ (the invariant) is deliberately left undefined until it can be made falsifiable.
 
 The QNM is being developed as the next phase of the [embraOS](https://github.com/Ward-Software-Defined-Systems/embraOS) AI Operating System Continuity Architecture project.
 
 ---
 
-## Getting Involved
+## Development
 
-This is early-stage research. The project is not yet at the "clone and run" phase — we're still drafting the architecture and building the first scaffold.
+The defining property of the scaffold: **with the no-op components, the model is bit-identical to a plain transformer**, enforced by a test (`torch.equal`, not a tolerance). Every future architectural effect is then measured as a provable delta from that null.
+
+Tooling is [`uv`](https://docs.astral.sh/uv/) — it provisions a compatible Python if your system version is too new for the PyTorch wheels.
+
+```bash
+uv python install 3.12
+uv sync --extra dev                                  # create the venv + install deps
+uv run pytest                                        # test suite (CPU)
+uv run ruff check . && uv run pyright                # lint + types
+uv run python -m embraos_qnm.train --device cpu      # train the tiny Core on a copy task
+uv run python -m embraos_qnm.generate --device cpu   # train-and-sample demo
+```
+
+---
+
+## Node-Scale Hallucination Study
+
+A separate, self-contained line of work in this repo: **[Node-Scale-Hallucination-Study.md](Node-Scale-Hallucination-Study.md)** — a pre-registered, falsifiable experiment asking whether a model's *fabrication-node scale* (the silicon process it runs on) measurably affects its hallucination rate, beyond what sampling temperature already explains. Independent of the QNM architecture work.
 
 ---
 

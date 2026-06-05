@@ -1,0 +1,28 @@
+name: ci
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  test:
+    # x86 Linux, no MPS — the CPU path is the source of truth for bit-identity
+    # and determinism. A one-bit divergence of the no-op QNM from the plain
+    # transformer turns this job red (H₀ wired into the pipeline).
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+      - name: Provision Python 3.12
+        run: uv python install 3.12
+      - name: Sync (with dev extras)
+        run: uv sync --extra dev
+      - name: Ruff lint
+        run: uv run ruff check .
+      - name: Ruff format check
+        run: uv run ruff format --check .
+      - name: Pyright
+        run: uv run pyright
+      - name: Pytest (CPU)
+        run: uv run pytest
