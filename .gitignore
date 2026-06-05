@@ -1,5 +1,6 @@
 # Default Ignores:
 .DS_STORE
+CLAUDE.md
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
