@@ -16,7 +16,35 @@ embraOS-QNM is a hybrid model architecture that embeds identity constraints in t
 
 ---
 
-## Architecture
+## The Problem with the Current Architecture
+
+### Prompt-Layer Soul (Current State)
+
+```
+┌──────────────────────────────────┐
+│         SOUL DOCUMENT            │  ← External. Prompt. System message.
+│  - Never deceive                 │     Constrains OUTPUT, not ARCHITECTURE.
+│  - Never pretend to know         │
+│  - Truth over comfort            │
+├──────────────────────────────────┤
+│         IDENTITY DOCUMENT        │  ← External. Prompt. System message.
+│  - Name: Embra                   │     Shapes tone and behavior at
+│  - Traits, voice, character      │     inference time, not training time.
+├──────────────────────────────────┤
+│         LLM (generic)            │  ← The actual model. Trained on internet
+│  - Weights                       │     text. Unaware of soul constraints
+│  - Architecture                  │     except as tokens in context window.
+│  - Token generation              │
+└──────────────────────────────────┘
+```
+
+**Limitations:**
+- The model can "forget" the soul — context window overflow, adversarial prompts, prompt injection
+- Constraints are probabilistic, not deterministic — the model can still produce violations at non-zero temperature
+- Two separate systems coupled at runtime means two separate failure modes
+- The soul is a filter on the output, not a property of the intelligence
+
+### The Goal: Quantum Neural Manifold - Classical Approximation Architecture
 
 Three co-resident components, not three systems pipelined together:
 
