@@ -2,7 +2,7 @@
   <img src="assets/embraos-qnm-banner.png" alt="embraOS" width="100%">
 </p>
 
-# embraOS-QNM — Application Specific AI Model
+# embraOS-QNM — Quantum Neural Manifold (Classical Approximation)
 
 **Architecture-layer constraints for language models.**
 
