@@ -24,6 +24,13 @@ version: "0.1.0"
 date-released: 2026-06-12
 repository-code: "https://github.com/Ward-Software-Defined-Systems/embraOS-QNM"
 url: "https://wsds.io"
+identifiers:
+  - type: doi
+    value: "10.5281/zenodo.20673162"
+    description: "Concept DOI — resolves to the latest version"
+  - type: doi
+    value: "10.5281/zenodo.20673163"
+    description: "Version DOI — v0.1.0"
 keywords:
   - "language models"
   - "model architecture"

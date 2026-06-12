@@ -6,6 +6,8 @@
 
 **Architecture-layer constraints for language models.**
 
+[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.20673162.svg)](https://doi.org/10.5281/zenodo.20673162)
+
 ---
 
 ## What Is This?
