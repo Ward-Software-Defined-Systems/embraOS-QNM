@@ -9,6 +9,6 @@ the Core and the injection seam; Fabric and World-State are honest no-ops for no
 from embraos_qnm.config import QNMConfig
 from embraos_qnm.manifold.model import QNMModel
 
-__version__ = "0.0.1"
+__version__ = "0.1.0"
 
 __all__ = ["QNMConfig", "QNMModel"]

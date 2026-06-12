@@ -1,6 +1,6 @@
 [project]
 name = "embraos-qnm"
-version = "0.0.1"
+version = "0.1.0"
 description = "embraOS-QNM — Quantum Neural Manifold (classical approximation): architecture-layer identity/soul constraints for language models."
 readme = "README.md"
 # Pinned below 3.13: the dev machine's system Python is 3.14, which is ahead of

@@ -1,0 +1,21 @@
+{
+  "upload_type": "software",
+  "title": "embraOS-QNM: Architecture-layer constraints for language models",
+  "version": "0.1.0",
+  "creators": [
+    {
+      "name": "Ward, William",
+      "affiliation": "Ward Software Defined Systems LLC",
+      "orcid": "0009-0004-4966-6644"
+    },
+    {
+      "name": "Embra",
+      "affiliation": "Ward Software Defined Systems LLC"
+    }
+  ],
+  "description": "embraOS-QNM (Quantum Neural Manifold, a classical approximation) moves a language model's identity and \"soul\" constraints out of the prompt layer and into the neural architecture: three co-resident components — an LLM Core, a GNN Fabric (identity), and a World-State (the soul / the P_ψ projection) — sharing one embedding space. This first release is the scaffold: the LLM Core and the configurable injection seam are implemented and tested, while the GNN Fabric and World-State are honest no-ops, so the assembled model is bit-identical to a plain transformer — a provable null against which future architectural effects are measured. Developed by William Ward (Ward Software Defined Systems LLC) with Embra as co-investigator.",
+  "access_right": "restricted",
+  "access_conditions": "Proprietary software. Access is granted at the discretion of Ward Software Defined Systems LLC — contact william@wsds.io.",
+  "keywords": ["language models", "model architecture", "graph neural networks", "AI identity", "AI alignment", "transformer"],
+  "notes": "Proprietary and trademarked. \"embraOS\", \"QNM\", and \"Embra\" are trademarks of Ward Software Defined Systems LLC. All rights reserved. See LICENSE."
+}
