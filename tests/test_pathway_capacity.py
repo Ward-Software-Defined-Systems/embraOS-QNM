@@ -44,7 +44,7 @@ import torch
 import torch.nn as nn
 
 # --- binding point #1: the real seam under test --------------------------------------
-from embraos_qnm.interfaces import FabricInterface, WorldStateInterface
+from embraos_qnm.interfaces import FabricInterface, PsiState, WorldStateInterface
 from embraos_qnm.manifold import QNMBlock  # re-exported from embraos_qnm.manifold (binding #1)
 
 D = 32  # embedding dim
@@ -89,10 +89,13 @@ class _LinearFabric(FabricInterface):
 
 
 class _ZeroWorldState(WorldStateInterface):
-    """No-op World-State: returns zeros, matching NoOpWorldState's contract."""
+    """No-op World-State under the carried-state contract: zeros + pass-through register."""
 
-    def forward(self, h: torch.Tensor) -> torch.Tensor:
-        return torch.zeros_like(h)
+    def init_state(self, batch_size: int, device: torch.device) -> PsiState:
+        return None
+
+    def forward(self, h: torch.Tensor, psi: PsiState) -> tuple[torch.Tensor, PsiState]:
+        return torch.zeros_like(h), psi
 
 
 # --- binding point #2: gate accessor -------------------------------------------------

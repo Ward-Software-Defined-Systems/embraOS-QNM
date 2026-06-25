@@ -20,11 +20,18 @@ from __future__ import annotations
 import torch
 from torch import Tensor
 
-from embraos_qnm.interfaces import WorldStateInterface
+from embraos_qnm.interfaces import PsiState, WorldStateInterface
 
 
 class NoOpWorldState(WorldStateInterface):
-    """Returns a zero modulation: ``P_ψ`` = identity, the honest null for ψ."""
+    """Returns a zero modulation: ``P_ψ`` = identity, the honest null for ψ.
 
-    def forward(self, h: Tensor) -> Tensor:
-        return torch.zeros_like(h)
+    Valid null under the carried-state contract: an empty (``None``) register and a
+    pass-through, so it stays a literal ``zeros_like`` while ψ is undefined.
+    """
+
+    def init_state(self, batch_size: int, device: torch.device) -> PsiState:
+        return None
+
+    def forward(self, h: Tensor, psi: PsiState) -> tuple[Tensor, PsiState]:
+        return torch.zeros_like(h), psi

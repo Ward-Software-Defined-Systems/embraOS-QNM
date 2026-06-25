@@ -7,7 +7,7 @@ from torch import Tensor
 
 from embraos_qnm.config import QNMConfig
 from embraos_qnm.core.transformer import TinyTransformer
-from embraos_qnm.interfaces import FabricInterface, WorldStateInterface
+from embraos_qnm.interfaces import FabricInterface, PsiState, WorldStateInterface
 from embraos_qnm.manifold.model import QNMModel
 from embraos_qnm.seed import set_seed
 
@@ -21,8 +21,13 @@ class _EchoFabric(FabricInterface):
 
 
 class _EchoWorldState(WorldStateInterface):
-    def forward(self, h: Tensor) -> Tensor:
-        return h
+    """LIVE delta under the carried-state contract: echoes h, carries an empty register."""
+
+    def init_state(self, batch_size: int, device: torch.device) -> PsiState:
+        return None
+
+    def forward(self, h: Tensor, psi: PsiState) -> tuple[Tensor, PsiState]:
+        return h, psi
 
 
 def test_gates_zero_initialized(cfg: QNMConfig):

@@ -42,5 +42,10 @@ class QNMBlock(nn.Module):
         if not self.enabled:
             return h_base
         delta_fabric = self.fabric(h_base)
-        delta_world = self.world_state(h_base)
+        # The World-State carries a ψ-state across the token axis. Initialized per forward
+        # here; cross-decode-step persistence is deferred until ψ is real (PSI §2). The
+        # returned register is discarded for now — with gate_world == 0 (and the no-op's
+        # zeros) the contribution is exactly zero, so bit-identity is untouched.
+        psi = self.world_state.init_state(h_base.size(0), h_base.device)
+        delta_world, _ = self.world_state(h_base, psi)
         return h_base + self.gate_fabric * delta_fabric + self.gate_world * delta_world
