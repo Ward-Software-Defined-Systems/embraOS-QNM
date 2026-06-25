@@ -9,7 +9,7 @@ from torch import Tensor, nn
 from embraos_qnm.config import QNMConfig
 from embraos_qnm.core.transformer import TinyTransformer
 from embraos_qnm.fabric import NoOpFabric
-from embraos_qnm.interfaces import FabricInterface, WorldStateInterface
+from embraos_qnm.interfaces import CoreInterface, FabricInterface, WorldStateInterface
 from embraos_qnm.manifold.qnm_block import QNMBlock
 from embraos_qnm.world_state import NoOpWorldState
 
@@ -27,10 +27,18 @@ class QNMModel(nn.Module):
         config: QNMConfig,
         fabric: FabricInterface | None = None,
         world_state: WorldStateInterface | None = None,
+        core: CoreInterface | None = None,
     ):
         super().__init__()
         self.config = config
-        self.core = TinyTransformer(config)
+        # Default Core is the from-scratch TinyTransformer; pass ``core=`` to drop in a
+        # pretrained backend (e.g. GPT2Core) behind the same CoreInterface contract.
+        self.core: CoreInterface = core if core is not None else TinyTransformer(config)
+        if not 0 <= config.inject_layer < self.core.num_layers():
+            raise ValueError(
+                f"inject_layer ({config.inject_layer}) must be in "
+                f"[0, num_layers={self.core.num_layers()}) for the given Core"
+            )
         fabric = fabric if fabric is not None else NoOpFabric()
         world_state = world_state if world_state is not None else NoOpWorldState()
         # Swap exactly one Core block for a QNMBlock. All QNM behavior lives inside the
@@ -67,7 +75,7 @@ class QNMModel(nn.Module):
     ) -> Tensor:
         """Autoregressively sample ``max_new_tokens``. ``temperature=0.0`` => greedy argmax."""
         for _ in range(max_new_tokens):
-            idx_cond = idx[:, -self.config.block_size :]
+            idx_cond = idx[:, -self.core.block_size :]
             logits, _ = self(idx_cond)
             logits = logits[:, -1, :]
             if temperature == 0.0:

@@ -19,6 +19,8 @@ class TinyTransformer(CoreInterface):
     def __init__(self, config: QNMConfig):
         super().__init__()
         self.config = config
+        self.d_model = config.d_model
+        self.block_size = config.block_size
         self.tok_emb = nn.Embedding(config.vocab_size, config.d_model)
         self.pos_emb = nn.Embedding(config.block_size, config.d_model)
         self.drop = nn.Dropout(config.dropout)
@@ -50,11 +52,13 @@ class TinyTransformer(CoreInterface):
         x = self.tok_emb(idx) + self.pos_emb(pos)  # (B,T,D) + (T,D) broadcast
         return self.drop(x)
 
+    def final(self, h: Tensor) -> Tensor:
+        return self.lm_head(self.ln_f(h))
+
     def forward(self, idx: Tensor, *, inject: InjectionFn | None = None) -> Tensor:
         x = self.embed(idx)
         for i, block in enumerate(self.blocks):
             x = block(x)
             if inject is not None:
                 x = inject(i, x)
-        x = self.ln_f(x)
-        return self.lm_head(x)
+        return self.final(x)

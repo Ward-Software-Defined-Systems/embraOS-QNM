@@ -46,8 +46,19 @@ class CoreInterface(nn.Module, abc.ABC):
     """LLM Core — a decoder-only transformer behind a swappable interface.
 
     Kept abstract so a pretrained backend can be dropped in later behind the same
-    contract; this session ships the from-scratch ``TinyTransformer`` implementation.
+    contract. The seam needs more than ``forward`` from a Core: ``QNMModel`` replaces
+    one entry of ``blocks`` *in place*, and a real Fabric/World-State sizes itself from
+    ``d_model``. Those structural members are part of the contract — declared here so the
+    from-scratch ``TinyTransformer`` and a pretrained backend expose the same surface.
     """
+
+    #: Per-layer block list. The seam swaps ``blocks[inject_layer]`` in place, so this
+    #: must be the *live* ``nn.ModuleList`` that ``forward`` iterates — not a copy.
+    blocks: nn.ModuleList
+    #: Shared embedding dim ``D``; Fabric/World-State modulations live in this space.
+    d_model: int
+    #: Max context length ``T``.
+    block_size: int
 
     @abc.abstractmethod
     def embed(self, idx: Tensor) -> Tensor:
@@ -57,6 +68,11 @@ class CoreInterface(nn.Module, abc.ABC):
     @abc.abstractmethod
     def num_layers(self) -> int:
         """Number of transformer blocks."""
+        raise NotImplementedError
+
+    @abc.abstractmethod
+    def final(self, h: Tensor) -> Tensor:
+        """``h: (B, T, D)`` -> ``logits: (B, T, V)``: the final norm + (tied) LM head."""
         raise NotImplementedError
 
     @abc.abstractmethod
