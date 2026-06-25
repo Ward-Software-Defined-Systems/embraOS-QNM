@@ -18,6 +18,11 @@ dev = [
     "ruff>=0.6",
     "pyright>=1.1.380",
 ]
+# Pretrained GPT-2 backend (P3): heavy (~500 MB) and CPU-runnable. Kept OUT of the default
+# dev/CI sync so the suite stays light; run `uv sync --extra gpt2` to enable the GPT-2 tests.
+gpt2 = [
+    "transformers>=4.40",
+]
 
 [build-system]
 requires = ["hatchling"]
