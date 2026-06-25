@@ -13,8 +13,10 @@ gates. Two independent reasons this is bit-identical to the bare block:
 
 from __future__ import annotations
 
+from typing import Any
+
 import torch
-from torch import Tensor, nn
+from torch import nn
 
 from embraos_qnm.interfaces import FabricInterface, WorldStateInterface
 
@@ -37,10 +39,16 @@ class QNMBlock(nn.Module):
         self.gate_fabric = nn.Parameter(torch.zeros(()))
         self.gate_world = nn.Parameter(torch.zeros(()))
 
-    def forward(self, h: Tensor) -> Tensor:
-        h_base = self.block(h)
+    def forward(self, *args: Any, **kwargs: Any) -> Any:
+        # Arg-transparent: pass everything to the wrapped layer and operate on its
+        # hidden-state output. One seam wraps both a TinyTransformer Block (single tensor
+        # in/out) and an HF decoder layer (hidden_states + RoPE/mask kwargs, tuple out)
+        # without threading the layer's auxiliary args by hand.
+        out = self.block(*args, **kwargs)
         if not self.enabled:
-            return h_base
+            return out
+        is_tuple = isinstance(out, tuple)
+        h_base = out[0] if is_tuple else out
         delta_fabric = self.fabric(h_base)
         # The World-State carries a ψ-state across the token axis. Initialized per forward
         # here; cross-decode-step persistence is deferred until ψ is real (PSI §2). The
@@ -48,4 +56,5 @@ class QNMBlock(nn.Module):
         # zeros) the contribution is exactly zero, so bit-identity is untouched.
         psi = self.world_state.init_state(h_base.size(0), h_base.device)
         delta_world, _ = self.world_state(h_base, psi)
-        return h_base + self.gate_fabric * delta_fabric + self.gate_world * delta_world
+        new_h = h_base + self.gate_fabric * delta_fabric + self.gate_world * delta_world
+        return (new_h, *out[1:]) if is_tuple else new_h

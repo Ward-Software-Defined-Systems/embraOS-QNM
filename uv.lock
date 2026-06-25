@@ -131,7 +131,7 @@ dev = [
     { name = "pytest" },
     { name = "ruff" },
 ]
-gpt2 = [
+hf = [
     { name = "transformers" },
 ]
 
@@ -142,9 +142,9 @@ requires-dist = [
     { name = "pytest", marker = "extra == 'dev'", specifier = ">=8" },
     { name = "ruff", marker = "extra == 'dev'", specifier = ">=0.6" },
     { name = "torch", specifier = ">=2.2" },
-    { name = "transformers", marker = "extra == 'gpt2'", specifier = ">=4.40" },
+    { name = "transformers", marker = "extra == 'hf'", specifier = ">=4.40" },
 ]
-provides-extras = ["dev", "gpt2"]
+provides-extras = ["dev", "hf"]
 
 [[package]]
 name = "filelock"

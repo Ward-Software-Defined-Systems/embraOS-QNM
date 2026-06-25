@@ -23,7 +23,7 @@ from embraos_qnm.manifold.model import QNMModel
 
 pytestmark = pytest.mark.skipif(
     importlib.util.find_spec("transformers") is None,
-    reason="requires the `gpt2` extra: uv sync --extra gpt2",
+    reason="requires the `hf` extra: uv sync --extra hf",
 )
 
 

@@ -18,9 +18,9 @@ dev = [
     "ruff>=0.6",
     "pyright>=1.1.380",
 ]
-# Pretrained GPT-2 backend (P3): heavy (~500 MB) and CPU-runnable. Kept OUT of the default
-# dev/CI sync so the suite stays light; run `uv sync --extra gpt2` to enable the GPT-2 tests.
-gpt2 = [
+# Pretrained HF causal-LM backends (P3 GPT-2, P2 Qwen2.5): transformers + tokenizers. Kept OUT
+# of the default dev/CI sync to stay light; `uv sync --extra hf` enables the GPT-2/Qwen cores + tests.
+hf = [
     "transformers>=4.40",
 ]
 
