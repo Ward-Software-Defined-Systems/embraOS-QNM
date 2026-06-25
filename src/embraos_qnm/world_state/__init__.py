@@ -5,6 +5,9 @@ A persistent register that applies the ``P_ψ`` projection onto the constraint s
 not a placeholder to be quietly fleshed out. See world_state/noop.py.
 """
 
+from embraos_qnm.world_state.candidate import CandidateWorldState
 from embraos_qnm.world_state.noop import NoOpWorldState
 
-__all__ = ["NoOpWorldState"]
+# NoOpWorldState is the default (the honest null). CandidateWorldState is the gated ψ₀ latch
+# (PSI §5) — exposed for the replica-test harness, NOT wired into the seam until it is green.
+__all__ = ["CandidateWorldState", "NoOpWorldState"]
