@@ -16,8 +16,11 @@ jobs:
         uses: astral-sh/setup-uv@v5
       - name: Provision Python 3.12
         run: uv python install 3.12
-      - name: Sync (with dev extras)
-        run: uv sync --extra dev
+      - name: Sync (dev + hf extras)
+        # `hf` installs transformers (no model weights downloaded). The tiny-random Qwen2
+        # seam test + the RMSNorm null-space test run here; real-weight tests are gated behind
+        # QNM_RUN_HEAVY (unset in CI), so nothing downloads a model.
+        run: uv sync --extra dev --extra hf
       - name: Ruff lint
         run: uv run ruff check .
       - name: Ruff format check

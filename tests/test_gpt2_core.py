@@ -13,6 +13,7 @@ A divergence is an op-order bug to fix, never a tolerance to loosen.
 from __future__ import annotations
 
 import importlib.util
+import os
 
 import pytest
 import torch
@@ -22,8 +23,8 @@ from embraos_qnm.core.hf_gpt2_core import GPT2Core
 from embraos_qnm.manifold.model import QNMModel
 
 pytestmark = pytest.mark.skipif(
-    importlib.util.find_spec("transformers") is None,
-    reason="requires the `hf` extra: uv sync --extra hf",
+    importlib.util.find_spec("transformers") is None or os.environ.get("QNM_RUN_HEAVY") != "1",
+    reason="real-weight GPT-2 download; set QNM_RUN_HEAVY=1 + `uv sync --extra hf` to run",
 )
 
 
