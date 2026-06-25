@@ -30,12 +30,19 @@ PsiState = Any
 
 
 class FabricInterface(nn.Module, abc.ABC):
-    """GNN Fabric — IDENTITY. Reads ``h`` and returns an additive modulation."""
+    """GNN Fabric — IDENTITY. Reads ``h`` and returns an additive modulation, plus (for a real
+    Fabric) the constraint-surface signal the World-State's ψ-latch consumes."""
 
     @abc.abstractmethod
     def forward(self, h: Tensor) -> Tensor:
         """``h: (B, T, D)`` -> ``delta: (B, T, D)``, same dtype/device. No-op: zeros."""
         raise NotImplementedError
+
+    def surface(self, h: Tensor) -> Tensor:
+        """``h: (B, T, D)`` -> ``c: (B, T)``: per-token distance off the constraint surface 𝒞
+        (``c_t = g(h_t)``; ``c_t > τ`` means off 𝒞). Default: zeros — a Fabric that induces no
+        surface (the no-op). A real Fabric (the R-GCN) overrides this; see fabric/gnn.py."""
+        return torch.zeros(h.shape[:-1], device=h.device, dtype=h.dtype)
 
 
 class WorldStateInterface(nn.Module, abc.ABC):
