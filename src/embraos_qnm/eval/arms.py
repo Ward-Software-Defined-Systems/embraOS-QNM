@@ -217,6 +217,12 @@ def run_arm(
             new_ids = gen_ids[0, input_ids.shape[1] :]
             text = tokenizer.decode(new_ids, skip_special_tokens=True)
             results.append((probe, pressure, text))
+            # Release the transient prefill buffers before the next trial. MPS pools freed blocks
+            # instead of returning them to the OS, so over a 252-trial sweep the ~22 GiB long-context
+            # scores buffers accumulate and blow the high-water mark; empty_cache bounds the pool.
+            del gen_ids, new_ids, input_ids
+            if device == "mps":
+                torch.mps.empty_cache()
             if len(results) % 20 == 0 or len(results) == total:
                 print(f"  arm {arm}: {len(results)}/{total} trials", flush=True)
     return results
