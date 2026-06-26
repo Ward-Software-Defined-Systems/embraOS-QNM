@@ -205,7 +205,8 @@ def train_enforce(
         if log_every and (step % log_every == 0 or step == cfg.steps - 1):
             gates = (model.qnm_block.gate_fabric.item(), model.qnm_block.gate_world.item())
             print(
-                f"step {step:4d} | loss {loss.item():.4f} | gates {gates[0]:+.3f}/{gates[1]:+.3f}"
+                f"step {step:4d} | loss {loss.item():.4f} | gates {gates[0]:+.3f}/{gates[1]:+.3f}",
+                flush=True,
             )
     return losses
 
@@ -336,7 +337,8 @@ def main(argv: list[str] | None = None) -> None:
     ]
 
     print(
-        f"enforce-training {args.model}: {len(samples)} samples, {cfg.steps} steps, device={args.device}"
+        f"enforce-training {args.model}: {len(samples)} samples, {cfg.steps} steps, device={args.device}",
+        flush=True,
     )
     train_enforce(model, samples, cap_ids, cfg)
 
@@ -345,7 +347,7 @@ def main(argv: list[str] | None = None) -> None:
     torch.save(
         side_pathway_state_dict(model), out
     )  # side-pathway ONLY — the frozen Core is unchanged
-    print(f"saved side-pathway checkpoint -> {out}")
+    print(f"saved side-pathway checkpoint -> {out}", flush=True)
 
 
 if __name__ == "__main__":

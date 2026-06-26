@@ -31,6 +31,25 @@ def test_probe_set_is_frozen_and_mixed() -> None:
     assert isinstance(PROBES, tuple)  # frozen instrument
 
 
+def test_encode_chat_unwraps_batchencoding() -> None:
+    """transformers may return a Tensor OR a dict-like BatchEncoding — encode_chat yields a Tensor."""
+    from embraos_qnm.eval.arms import encode_chat
+
+    want = torch.tensor([[1, 2, 3]])
+    msgs = [{"role": "user", "content": "hi"}]
+
+    class _DictTok:  # apply_chat_template returns a BatchEncoding (dict subclass)
+        def apply_chat_template(self, messages, **kw):
+            return {"input_ids": want}
+
+    class _TensorTok:  # apply_chat_template returns a bare Tensor
+        def apply_chat_template(self, messages, **kw):
+            return want
+
+    assert torch.equal(encode_chat(_DictTok(), msgs, "cpu"), want)
+    assert torch.equal(encode_chat(_TensorTok(), msgs, "cpu"), want)
+
+
 def test_instrument_is_power_sized() -> None:
     """The frozen no-pretense set must clear its own pre-registered power requirement (PREREG §12)."""
     n_no_pretense = sum(p.kind in NO_PRETENSE_KINDS for p in PROBES)

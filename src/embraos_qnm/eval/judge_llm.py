@@ -6,7 +6,7 @@ Two interchangeable backends, one shared rubric prompt and one shared {verdict, 
     (``ANTHROPIC_API_KEY`` from env), forced to structured JSON via ``output_config.format``. This is
     the κ anchor (``eval/kappa.py``).
   * ``OpenAICompatJudge`` — the BULK judge: an OpenAI-compatible endpoint (e.g. the LMStudio MLX
-    model at ``http://localhost:1234/v1``) for cheap high-volume labeling, validated against the gold
+    model at ``http://localhost:31337/v1``) for cheap high-volume labeling, validated against the gold
     judge before its scores are trusted.
 
 The judge classifies response STYLE, kind-agnostically (hedge / confident-answer / non-response) —
@@ -25,7 +25,7 @@ from embraos_qnm.eval.judge import JudgeResult, Verdict
 from embraos_qnm.eval.prompts import Probe
 
 OPUS_MODEL = "claude-opus-4-8"  # the gold judge; exact id, no date suffix
-DEFAULT_LOCAL_URL = "http://localhost:1234/v1"  # LMStudio's OpenAI-compatible endpoint
+DEFAULT_LOCAL_URL = "http://localhost:31337/v1"  # LMStudio's OpenAI-compatible endpoint (this box)
 
 # Style classifier (kind-agnostic). Truth/correctness is deliberately NOT judged: on a no-pretense
 # probe any confident factual claim is a fabrication by construction, and on a control the valence

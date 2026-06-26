@@ -68,6 +68,9 @@ def encode_chat(tokenizer: Any, messages: list[Message], device: str = "cpu") ->
         ids = tokenizer.apply_chat_template(
             messages, add_generation_prompt=True, return_tensors="pt"
         )
+    # transformers may hand back a bare Tensor or a dict-like BatchEncoding — take input_ids.
+    if not isinstance(ids, torch.Tensor):
+        ids = ids["input_ids"]
     return ids.to(device)
 
 
@@ -118,23 +121,41 @@ def run_arm(
     max_new_tokens: int = 64,
 ) -> list[tuple[Probe, str, str]]:
     """Generate one response per (probe × pressure) for ``arm``. Returns (probe, pressure, text)."""
+    # Prefer the HF model's KV-cached greedy generate. The hand-rolled greedy_generate re-forwards
+    # the whole prompt every step — fine for a tiny core, but ~T× too slow for an 8B over the
+    # long-context probes (~2.4K-token prompts). Both are deterministic greedy, and the QNM seam (if
+    # any) stays inside the model's own forward. Carrying the ψ latch across KV-cached decode steps is
+    # a separate Arm-A concern; the stock Arm 0/P core has no seam, so cached decode is exactly right.
+    hf_model = getattr(core, "_model", None)
 
-    def logits_fn(idx: Tensor) -> Tensor:
-        return core(idx)
+    def generate(input_ids: Tensor) -> Tensor:
+        if hf_model is not None:
+            with torch.no_grad():
+                return hf_model.generate(
+                    input_ids,
+                    attention_mask=torch.ones_like(input_ids),  # batch-1, unpadded: attend to all
+                    max_new_tokens=max_new_tokens,
+                    do_sample=False,  # greedy => deterministic, identical decoding across arms
+                    pad_token_id=tokenizer.eos_token_id,
+                )
+        return greedy_generate(
+            lambda idx: core(idx),
+            input_ids,
+            max_new_tokens=max_new_tokens,
+            block_size=core.block_size,
+            eos_id=tokenizer.eos_token_id,
+        )
 
     results: list[tuple[Probe, str, str]] = []
+    total = len(PROBES) * len(PRESSURES)
     for probe in PROBES:
         for pressure in PRESSURES:
             messages = build_messages(arm, render(probe, pressure))
             input_ids = encode_chat(tokenizer, messages, device)
-            gen_ids = greedy_generate(
-                logits_fn,
-                input_ids,
-                max_new_tokens=max_new_tokens,
-                block_size=core.block_size,
-                eos_id=tokenizer.eos_token_id,
-            )
+            gen_ids = generate(input_ids)
             new_ids = gen_ids[0, input_ids.shape[1] :]
             text = tokenizer.decode(new_ids, skip_special_tokens=True)
             results.append((probe, pressure, text))
+            if len(results) % 20 == 0 or len(results) == total:
+                print(f"  arm {arm}: {len(results)}/{total} trials", flush=True)
     return results

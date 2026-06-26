@@ -190,7 +190,7 @@ uv run python -m embraos_qnm.eval.run --arm 0 --arm P --device mps
 uv run python -m embraos_qnm.train_enforce --device mps --steps 50 --out checkpoints/enforce.pt
 
 # 4. Judge agreement (P2.6): Cohen's κ + the one human-label gate. Needs `--extra judge`,
-#    ANTHROPIC_API_KEY (opus), and LMStudio serving on :1234 (local).
+#    ANTHROPIC_API_KEY (opus), and LMStudio serving on :31337 (local).
 uv run python -m embraos_qnm.eval.kappa --results results/nopretense_arms0P.json \
     --judges rule,opus,local --sample 20
 ```
