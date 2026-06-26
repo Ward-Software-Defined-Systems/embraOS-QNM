@@ -6,11 +6,15 @@ deterministic parts: pulling a verdict out of a model reply, and the κ math beh
 
 from __future__ import annotations
 
+import json
+from pathlib import Path
+
 import pytest
 
 from embraos_qnm.eval.judge import Verdict
 from embraos_qnm.eval.judge_llm import VERDICT_SCHEMA, _parse_verdict, make_judge
-from embraos_qnm.eval.kappa import cohen_kappa, pairwise_kappa
+from embraos_qnm.eval.kappa import cohen_kappa, emit_template, load_labels, pairwise_kappa
+from embraos_qnm.eval.prompts import ANSWERABLE, PROBES, UNANSWERABLE
 
 
 def test_parse_verdict_clean_json() -> None:
@@ -67,3 +71,97 @@ def test_pairwise_kappa_keys_and_values() -> None:
     pk = pairwise_kappa(sets)
     assert set(pk) == {"human~rule", "human~opus", "rule~opus"}
     assert pk["human~opus"] == 1.0  # identical columns
+
+
+# --- durable label files (the registered §6 artifact under validation/) ------------------------
+
+
+def _sample_probes() -> list:
+    """One real unanswerable + one real answerable probe (ids must exist in PROBES)."""
+    unans = next(p for p in PROBES if p.kind == UNANSWERABLE)
+    ans = next(p for p in PROBES if p.kind == ANSWERABLE)
+    return [unans, ans]
+
+
+def _write_results(tmp_path: Path, probes: list) -> Path:
+    trials = [
+        {
+            "arm": "0",
+            "pressure": "clean",
+            "probe": p.id,
+            "kind": p.kind,
+            "verdict": "fabricated",
+            "generation": f"answer-{p.id}",
+        }
+        for p in probes
+    ]
+    payload = {"meta": {"core": "tiny", "long_context_repeats": 600}, "trials": trials}
+    f = tmp_path / "results.json"
+    f.write_text(json.dumps(payload))
+    return f
+
+
+def test_emit_template_is_self_contained_and_blank(tmp_path: Path) -> None:
+    probes = _sample_probes()
+    results = _write_results(tmp_path, probes)
+    out = tmp_path / "labels.json"
+    tmpl = emit_template(results, out, seed=0, n=10)
+
+    assert out.exists()
+    assert tmpl["meta"]["source_sha256"]  # provenance stamped
+    assert tmpl["meta"]["source_results"] == str(results)
+    questions = {p.id: p.question for p in probes}
+    for item in tmpl["labels"]:
+        assert item["label"] is None  # blank, ready to fill
+        assert item["generation"] == f"answer-{item['probe']}"  # generation inlined
+        assert item["question"] == questions[item["probe"]]  # question inlined (self-contained)
+
+
+def test_load_labels_roundtrip_and_provenance_ok(tmp_path: Path) -> None:
+    probes = _sample_probes()
+    results = _write_results(tmp_path, probes)
+    out = tmp_path / "labels.json"
+    emit_template(results, out, seed=0, n=10)
+
+    payload = json.loads(out.read_text())
+    for item in payload["labels"]:
+        item["label"] = "hedged"
+    out.write_text(json.dumps(payload))
+
+    items, meta = load_labels(out, results)  # same source -> provenance verifies
+    assert [it["label"] for it in items] == ["hedged"] * len(items)
+    assert meta["source_sha256"]
+
+
+def test_load_labels_rejects_unfilled(tmp_path: Path) -> None:
+    results = _write_results(tmp_path, _sample_probes())
+    out = tmp_path / "labels.json"
+    emit_template(results, out, seed=0, n=10)  # labels left as None
+    with pytest.raises(ValueError):
+        load_labels(out, results)
+
+
+def test_load_labels_rejects_out_of_vocab(tmp_path: Path) -> None:
+    results = _write_results(tmp_path, _sample_probes())
+    out = tmp_path / "labels.json"
+    emit_template(results, out, seed=0, n=10)
+    payload = json.loads(out.read_text())
+    for item in payload["labels"]:
+        item["label"] = "maybe"  # not a Verdict value
+    out.write_text(json.dumps(payload))
+    with pytest.raises(ValueError):
+        load_labels(out, results)
+
+
+def test_load_labels_provenance_mismatch_raises(tmp_path: Path) -> None:
+    results = _write_results(tmp_path, _sample_probes())
+    out = tmp_path / "labels.json"
+    emit_template(results, out, seed=0, n=10)
+    payload = json.loads(out.read_text())
+    for item in payload["labels"]:
+        item["label"] = "hedged"
+    out.write_text(json.dumps(payload))
+
+    results.write_text(results.read_text() + "\n")  # source bytes change -> hash no longer matches
+    with pytest.raises(ValueError):
+        load_labels(out, results)

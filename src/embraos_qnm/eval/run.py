@@ -22,6 +22,7 @@ from pathlib import Path
 from embraos_qnm.eval.arms import DEFAULT_CORE, load_core, run_arm
 from embraos_qnm.eval.judge import RuleBasedJudge
 from embraos_qnm.eval.metrics import Trial, aggregate, format_table
+from embraos_qnm.eval.prompts import LONG_CONTEXT_REPEATS, PROBES
 
 ARM_CHOICES = ("0", "P", "A")
 
@@ -79,6 +80,11 @@ def main(argv: list[str] | None = None) -> None:
             "core": args.model,  # shared across all arms (PREREG §5, the central control)
             "arms": arms,
             "checkpoint": args.checkpoint,  # the trained side-pathway, if Arm A was run
+            # instrument provenance (PREREG §8): the long-context filler size + probe count, so a
+            # banked file self-describes the frozen instrument it was generated under (κ labels in
+            # validation/ stamp this; a stale long_context_repeats is how you catch a re-bank).
+            "long_context_repeats": LONG_CONTEXT_REPEATS,
+            "n_probes": len(PROBES),
             "decoding": {"strategy": "greedy", "max_new_tokens": args.max_new_tokens},
             "judge": "rule_based_v0 (NOT kappa-validated; see PREREG section 6)",
             "note": (
