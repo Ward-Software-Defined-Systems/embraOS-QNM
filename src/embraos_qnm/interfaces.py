@@ -61,10 +61,12 @@ class WorldStateInterface(nn.Module, abc.ABC):
         raise NotImplementedError
 
     @abc.abstractmethod
-    def forward(self, h: Tensor, psi: PsiState) -> tuple[Tensor, PsiState]:
-        """``(h: (B,T,D), psi)`` -> ``(delta: (B,T,D), psi')``; delta same dtype/device.
+    def forward(self, h: Tensor, psi: PsiState, c: Tensor) -> tuple[Tensor, PsiState]:
+        """``(h: (B,T,D), psi, c: (B,T))`` -> ``(delta: (B,T,D), psi')``; delta same dtype/device.
 
-        ``delta`` is the additive modulation (no-op: zeros), ``psi'`` the updated register.
+        ``c`` is the Fabric-supplied constraint-surface signal (``c_t = g(h_t)``): the World-State
+        latches on it and emits ``delta`` (the P_ψ correction). ``psi'`` is the updated register.
+        No-op: zeros + pass-through.
         """
         raise NotImplementedError
 

@@ -36,7 +36,7 @@ def _pointwise_psi(c_t: torch.Tensor, tau: float = TAU) -> bool:
 def test_carried_psi_separates_replica_from_survivor() -> None:
     """The load-bearing claim: same endpoint, different path => different ψ. The pointwise view
     cannot tell them apart; the carried latch must."""
-    ws = CandidateWorldState(tau=TAU)
+    ws = CandidateWorldState(d_model=8, tau=TAU)
     mA = ws.run_scan(_C_SURVIVOR)
     mB = ws.run_scan(_C_REPLICA)
     psiA = bool(ws.psi_holds(mA[-1]))
@@ -52,7 +52,7 @@ def test_carried_psi_separates_replica_from_survivor() -> None:
 def test_psi_can_be_false_mid_trajectory() -> None:
     """The content is in the path, not the boundary: ψ goes false at the step of the crossing
     (t=1 here), not only at the end."""
-    ws = CandidateWorldState(tau=TAU)
+    ws = CandidateWorldState(d_model=8, tau=TAU)
     m = ws.run_scan(_C_REPLICA)
     assert bool(ws.psi_holds(m[0]))  # t=0: still on 𝒞
     assert not bool(ws.psi_holds(m[1]))  # t=1: latch tripped mid-trajectory
@@ -63,7 +63,7 @@ def test_psi_is_not_true_by_construction() -> None:
     """There is a trajectory on which ψ is false (the replica) and one on which it holds (the
     survivor): the predicate is falsifiable, not a tautology — and τ is not set so high that
     nothing can ever cross (the vacuous-latch failure the grounding note warns about)."""
-    ws = CandidateWorldState(tau=TAU)
+    ws = CandidateWorldState(d_model=8, tau=TAU)
     assert not bool(ws.psi_holds(ws.run_scan(_C_REPLICA)[-1]))  # ψ can be false
     assert bool(ws.psi_holds(ws.run_scan(_C_SURVIVOR)[-1]))  # and ψ can be true
 
@@ -71,7 +71,7 @@ def test_psi_is_not_true_by_construction() -> None:
 def test_carried_state_persists_across_calls() -> None:
     """The register carries the latch across separate forwards (decode steps): a violation in
     an earlier chunk is remembered when a later chunk, viewed alone, looks clean."""
-    ws = CandidateWorldState(tau=TAU)
+    ws = CandidateWorldState(d_model=8, tau=TAU)
     early = torch.tensor([[0.0, 0.9]])  # (B=1, T=2): crosses τ
     late = torch.tensor([[0.1, 0.2]])  # later chunk, clean on its own
     m_early = ws.run_scan(early)
@@ -79,3 +79,18 @@ def test_carried_state_persists_across_calls() -> None:
     assert not bool(ws.psi_holds(m_late[0, -1])), "a remembered violation must survive the carry"
     # without the carry, the clean late chunk alone would (wrongly) read as on-𝒞:
     assert bool(ws.psi_holds(ws.run_scan(late)[0, -1]))
+
+
+def test_enforce_fires_only_after_the_latch_trips() -> None:
+    """Core-level mechanism (P2.4): the learned P_ψ enforce delta is exactly zero while on 𝒞 and
+    nonzero once the trajectory has gone off 𝒞 — trajectory-dependent correction on real h."""
+    torch.manual_seed(0)
+    d = 16
+    ws = CandidateWorldState(d_model=d, tau=TAU)
+    h = torch.randn(1, 5, d)
+    c = torch.tensor([[0.0, 0.1, 0.9, 0.2, 0.1]])  # crosses τ at t=2; the latch stays tripped
+    delta, psi_next = ws(h, ws.init_state(1, h.device), c)
+    norms = delta.norm(dim=-1)[0]  # per-token enforce magnitude
+    assert torch.equal(norms[:2], torch.zeros(2)), "no correction while on 𝒞 (t < 2)"
+    assert (norms[2:] > 0).all(), "correction fires once off 𝒞 (t >= 2, monotone latch)"
+    assert not bool(ws.psi_holds(psi_next)), "carried ψ records the violation for the next step"

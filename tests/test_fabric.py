@@ -67,3 +67,19 @@ def test_cold_start_inert_with_gnn_fabric() -> None:
     qnm = QNMModel(cfg, fabric=fab, world_state=NoOpWorldState())
     idx = torch.randint(0, cfg.vocab_size, (3, 8))
     assert torch.equal(plain(idx), qnm(idx)[0])
+
+
+def test_qnm_fabric_plus_candidate_world_state_cold_start_inert() -> None:
+    """ψ fully wired (Fabric surface -> CandidateWorldState latch -> learned enforce) is STILL
+    bit-identical at gate-0 -- wiring the SOUL in does not break the null."""
+    from embraos_qnm.world_state.candidate import CandidateWorldState
+
+    cfg = QNMConfig(vocab_size=17, block_size=16, n_layer=3, n_head=2, d_model=32, inject_layer=1)
+    fab = _fabric(cfg.d_model)
+    ws = CandidateWorldState(d_model=cfg.d_model, tau=0.5)
+    torch.manual_seed(0)
+    plain = TinyTransformer(cfg)
+    torch.manual_seed(0)
+    qnm = QNMModel(cfg, fabric=fab, world_state=ws)
+    idx = torch.randint(0, cfg.vocab_size, (3, 8))
+    assert torch.equal(plain(idx), qnm(idx)[0])

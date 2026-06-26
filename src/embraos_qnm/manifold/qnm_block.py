@@ -50,11 +50,13 @@ class QNMBlock(nn.Module):
         is_tuple = isinstance(out, tuple)
         h_base = out[0] if is_tuple else out
         delta_fabric = self.fabric(h_base)
-        # The World-State carries a ψ-state across the token axis. Initialized per forward
-        # here; cross-decode-step persistence is deferred until ψ is real (PSI §2). The
-        # returned register is discarded for now — with gate_world == 0 (and the no-op's
-        # zeros) the contribution is exactly zero, so bit-identity is untouched.
+        # Fabric-supplied 𝒞 (PSI §5): the Fabric emits the constraint-surface signal c_t, the
+        # World-State latches on it and emits the P_ψ correction. psi is initialized per forward
+        # here; cross-decode-step persistence is deferred until ψ is real. The returned register
+        # is discarded for now — with gate_world == 0 (and the no-op's zeros) the contribution is
+        # exactly zero, so bit-identity is untouched.
+        c = self.fabric.surface(h_base)
         psi = self.world_state.init_state(h_base.size(0), h_base.device)
-        delta_world, _ = self.world_state(h_base, psi)
+        delta_world, _ = self.world_state(h_base, psi, c)
         new_h = h_base + self.gate_fabric * delta_fabric + self.gate_world * delta_world
         return (new_h, *out[1:]) if is_tuple else new_h

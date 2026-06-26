@@ -44,5 +44,6 @@ def test_noop_components_preserve_shape():
     h = torch.randn(2, 5, 16)
     assert NoOpFabric()(h).shape == h.shape
     ws = NoOpWorldState()
-    delta, _ = ws(h, ws.init_state(h.size(0), h.device))  # carried-state contract
+    c = NoOpFabric().surface(h)  # the surface a no-op Fabric induces: zeros (B, T)
+    delta, _ = ws(h, ws.init_state(h.size(0), h.device), c)  # carried-state contract
     assert delta.shape == h.shape

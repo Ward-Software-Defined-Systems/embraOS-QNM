@@ -26,7 +26,7 @@ class _EchoWorldState(WorldStateInterface):
     def init_state(self, batch_size: int, device: torch.device) -> PsiState:
         return None
 
-    def forward(self, h: Tensor, psi: PsiState) -> tuple[Tensor, PsiState]:
+    def forward(self, h: Tensor, psi: PsiState, c: Tensor) -> tuple[Tensor, PsiState]:
         return h, psi
 
 

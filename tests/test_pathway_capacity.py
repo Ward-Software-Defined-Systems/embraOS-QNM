@@ -94,7 +94,9 @@ class _ZeroWorldState(WorldStateInterface):
     def init_state(self, batch_size: int, device: torch.device) -> PsiState:
         return None
 
-    def forward(self, h: torch.Tensor, psi: PsiState) -> tuple[torch.Tensor, PsiState]:
+    def forward(
+        self, h: torch.Tensor, psi: PsiState, c: torch.Tensor
+    ) -> tuple[torch.Tensor, PsiState]:
         return torch.zeros_like(h), psi
 
 
