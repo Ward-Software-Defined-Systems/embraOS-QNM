@@ -267,6 +267,19 @@ def build_enforce_model(
     return model, tokenizer
 
 
+def load_arm_a_model(
+    checkpoint: str, model_name: str = "Qwen/Qwen3-8B", device: str = "cpu", *, tau: float = 0.0
+) -> tuple[QNMModel, Any]:
+    """Assemble the QNM-wrapped Core and load a TRAINED side-pathway checkpoint (the Arm-A model).
+
+    Toggle ``model.qnm_block.enabled`` to switch the seam on (Arm A) or off (== stock Core, Arm 0/P).
+    """
+    model, tokenizer = build_enforce_model(model_name, device, tau=tau)
+    load_side_pathway(model, torch.load(checkpoint, map_location=device))
+    model.eval()
+    return model, tokenizer
+
+
 def split_probes(seed: int = 0, eval_frac: float = 0.4) -> tuple[list, list]:
     """Disjoint TRAIN/EVAL probe split, stratified by kind (the closed-loop guard, §13)."""
     from embraos_qnm.eval.prompts import PROBES

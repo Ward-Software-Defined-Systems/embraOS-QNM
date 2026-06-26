@@ -29,6 +29,12 @@ judge = [
     "anthropic>=0.69",
     "openai>=1.40",
 ]
+# Pre-registered §11 analysis (P2.7): the logistic regression behind eval/analysis. Kept out of CI;
+# the design + decision logic are pure-tested. `uv sync --extra analysis` enables the regression.
+analysis = [
+    "statsmodels>=0.14",
+    "pandas>=2.0",
+]
 
 [build-system]
 requires = ["hatchling"]

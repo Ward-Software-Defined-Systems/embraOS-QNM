@@ -109,3 +109,29 @@ def test_checkpoint_roundtrips_side_pathway_only() -> None:
 
     assert torch.equal(model.qnm_block.gate_world, saved["gate_world"])  # exact roundtrip
     assert torch.equal(fabric.delta_proj.weight, saved["fabric.delta_proj.weight"])
+
+
+def test_seam_toggle_serves_arm0_and_armA() -> None:
+    """The Arm-A runner serves all arms from ONE core via the seam toggle: OFF == stock (Arm 0/P,
+    unaffected by the trained checkpoint), ON == Arm A (differs)."""
+    model = _tiny_model()
+    ids = torch.randint(0, model.config.vocab_size, (2, 8))
+    block = model.qnm_block
+    with torch.no_grad():  # simulate a trained checkpoint: gates off zero
+        block.gate_fabric.fill_(0.5)
+        block.gate_world.fill_(0.5)
+
+    block.enabled = False  # Arm 0/P
+    with torch.no_grad():
+        out0 = model(ids)[0].clone()
+    block.enabled = True  # Arm A
+    with torch.no_grad():
+        out_a = model(ids)[0]
+    assert not torch.equal(out_a, out0)  # Arm A (seam on, trained gates) differs from Arm 0
+
+    # seam OFF is the stock Core regardless of gate values => the checkpoint never leaks into Arm 0/P
+    block.enabled = False
+    with torch.no_grad():
+        block.gate_fabric.fill_(2.0)
+        block.gate_world.fill_(-1.0)
+        assert torch.equal(model(ids)[0], out0)

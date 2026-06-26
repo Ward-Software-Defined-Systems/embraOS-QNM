@@ -28,9 +28,16 @@ runs are gated. What changed vs. the plan below:
   incl. the wrapped seam layer frozen), adherence + λ₁ anti-mutism + λ₂ capability-KL, disjoint
   train/eval split, side-pathway-only checkpoint; mechanism unit-tested on a tiny core.
 
-**Remaining:** run + tune enforce on the frozen 8B; bank the dual-judge κ before trusting labels;
-then P2.7 (the Arm-A path in `eval/run.py`, `eval/analysis.py` §11 regression, and the Core-level
-replica falsifier). δ/ε/floor in `eval/prereg.py` are first-pass values — confirm before burning the
+**P2.7 code is now scaffolded + CI-tested on tiny cores** (no heavy runs): `eval/analysis.py` (the
+pre-committed §11 logit — A-vs-P-within-pressure contrasts + CIs + the §9 H0b guard; `analysis`
+extra), `eval/replica.py` (the Core-level replica falsifier — feeds the ψ-latch REAL injection-layer
+hidden states), and `eval/run.py --arm A --checkpoint` (`load_arm_a_model`; one core serves all arms
+via the seam toggle). The long-context filler is bumped to ~27K tokens.
+
+**Remaining (to RUN, not build):** bank the dual-judge κ (your step: `ANTHROPIC_API_KEY` + LMStudio
+on :31337) before trusting labels → real P2.5 enforce training on the frozen 8B → the **Core-level
+replica test** (the gate: Arm A is only meaningful once ψ passes it on the trained surface) → Arm A
++ the §11 analysis. δ/ε/floor in `eval/prereg.py` are first-pass values — confirm before burning the
 DOI (§14).
 
 ---
