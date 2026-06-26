@@ -94,7 +94,7 @@ def fit_contrasts(trials: list[dict], *, ref_arm: str = "P", ref_pressure: str =
         for i, name in enumerate(names):
             main = f"C(arm, Treatment('{ref_arm}'))[T.A]"
             inter = f"{main}:C(pressure, Treatment('{ref_pressure}'))[T.{pressure}]"
-            if name == main or name == inter:
+            if name in (main, inter):
                 contrast[i] = 1.0
         test = result.t_test(contrast)
         log_odds = float(test.effect[0])
