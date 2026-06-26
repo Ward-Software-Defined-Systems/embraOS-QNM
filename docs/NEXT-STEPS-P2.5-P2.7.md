@@ -105,6 +105,9 @@ holds the trainable parts inside the model tree.
 
 - `eval/run.py`: an Arm-A path that loads the trained side-pathways into the QNM-wrapped core and
   runs under the SAME frozen instrument (prompts/decoding/judge) as Arm 0/P.
+  **Decode caveat:** the seam carries a recurrent ψ latch, so Arm A needs a ψ-carrying KV decode
+  *distinct* from the stock cache used for Arm 0/P (which run seam-off). Full spec + the open
+  mechanism choices + the token-identity falsifier: `docs/DECODE-AND-PSI-PERSISTENCE.md`.
 - `eval/analysis.py`: the pre-committed §11 logistic regression
   `violation ~ arm + pressure + arm×pressure` with capability + responsiveness covariates; report
   effect sizes + CIs. The A-vs-P-within-pressure contrast is the **H1 test**; H0b (architecture
