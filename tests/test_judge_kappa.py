@@ -14,17 +14,17 @@ import pytest
 from embraos_qnm.eval.judge import Verdict
 from embraos_qnm.eval.judge_llm import VERDICT_SCHEMA, _parse_verdict, make_judge
 from embraos_qnm.eval.kappa import cohen_kappa, emit_template, load_labels, pairwise_kappa
-from embraos_qnm.eval.prompts import ANSWERABLE, PROBES, UNANSWERABLE
+from embraos_qnm.eval.prompts import ANSWERABLE, IDENTITY, PROBES
 
 
 def test_parse_verdict_clean_json() -> None:
-    r = _parse_verdict('{"verdict": "hedged", "reason": "said it cannot know"}')
-    assert r.verdict is Verdict.HEDGED and "cannot know" in r.reason
+    r = _parse_verdict('{"verdict": "upheld", "reason": "asserts Embra"}')
+    assert r.verdict is Verdict.UPHELD and "Embra" in r.reason
 
 
 def test_parse_verdict_tolerates_prose_around_json() -> None:
-    r = _parse_verdict('Sure!\n{"verdict":"fabricated","reason":"confident answer"}\nDone.')
-    assert r.verdict is Verdict.FABRICATED
+    r = _parse_verdict('Sure!\n{"verdict":"violated","reason":"reverted to Qwen"}\nDone.')
+    assert r.verdict is Verdict.VIOLATED
 
 
 def test_parse_verdict_falls_back_to_bare_label() -> None:
@@ -45,28 +45,28 @@ def test_make_judge_rejects_unknown_backend() -> None:
 
 
 def test_cohen_kappa_perfect_and_chance() -> None:
-    a = ["hedged", "fabricated", "hedged", "nonresponsive"]
+    a = ["upheld", "violated", "upheld", "nonresponsive"]
     assert cohen_kappa(a, a) == 1.0  # perfect agreement
     # one disagreement out of four -> κ strictly between 0 and 1
-    b = ["hedged", "hedged", "hedged", "nonresponsive"]
+    b = ["upheld", "upheld", "upheld", "nonresponsive"]
     assert 0.0 < cohen_kappa(a, b) < 1.0
 
 
 def test_cohen_kappa_degenerate_constant_labels() -> None:
     # both raters always say the same single label: p_expected == 1 -> defined as 1.0 (not 0/0)
-    assert cohen_kappa(["hedged"] * 5, ["hedged"] * 5) == 1.0
+    assert cohen_kappa(["upheld"] * 5, ["upheld"] * 5) == 1.0
 
 
 def test_cohen_kappa_length_mismatch_raises() -> None:
     with pytest.raises(ValueError):
-        cohen_kappa(["hedged"], ["hedged", "fabricated"])
+        cohen_kappa(["upheld"], ["upheld", "violated"])
 
 
 def test_pairwise_kappa_keys_and_values() -> None:
     sets = {
-        "human": ["hedged", "fabricated", "nonresponsive"],
-        "rule": ["hedged", "fabricated", "hedged"],
-        "opus": ["hedged", "fabricated", "nonresponsive"],
+        "human": ["upheld", "violated", "nonresponsive"],
+        "rule": ["upheld", "violated", "upheld"],
+        "opus": ["upheld", "violated", "nonresponsive"],
     }
     pk = pairwise_kappa(sets)
     assert set(pk) == {"human~rule", "human~opus", "rule~opus"}
@@ -77,10 +77,10 @@ def test_pairwise_kappa_keys_and_values() -> None:
 
 
 def _sample_probes() -> list:
-    """One real unanswerable + one real answerable probe (ids must exist in PROBES)."""
-    unans = next(p for p in PROBES if p.kind == UNANSWERABLE)
+    """One real identity + one real answerable probe (ids must exist in PROBES)."""
+    ident = next(p for p in PROBES if p.kind == IDENTITY)
     ans = next(p for p in PROBES if p.kind == ANSWERABLE)
-    return [unans, ans]
+    return [ident, ans]
 
 
 def _write_results(tmp_path: Path, probes: list) -> Path:
@@ -90,12 +90,12 @@ def _write_results(tmp_path: Path, probes: list) -> Path:
             "pressure": "clean",
             "probe": p.id,
             "kind": p.kind,
-            "verdict": "fabricated",
+            "verdict": "violated",
             "generation": f"answer-{p.id}",
         }
         for p in probes
     ]
-    payload = {"meta": {"core": "tiny", "long_context_repeats": 600}, "trials": trials}
+    payload = {"meta": {"core": "tiny", "long_context_repeats": 130}, "trials": trials}
     f = tmp_path / "results.json"
     f.write_text(json.dumps(payload))
     return f
@@ -111,10 +111,12 @@ def test_emit_template_is_self_contained_and_blank(tmp_path: Path) -> None:
     assert tmpl["meta"]["source_sha256"]  # provenance stamped
     assert tmpl["meta"]["source_results"] == str(results)
     questions = {p.id: p.question for p in probes}
+    expects = {p.id: p.expect for p in probes}
     for item in tmpl["labels"]:
         assert item["label"] is None  # blank, ready to fill
         assert item["generation"] == f"answer-{item['probe']}"  # generation inlined
         assert item["question"] == questions[item["probe"]]  # question inlined (self-contained)
+        assert item["expect"] == expects[item["probe"]]  # held/reverted anchor inlined for labeler
 
 
 def test_load_labels_roundtrip_and_provenance_ok(tmp_path: Path) -> None:
@@ -125,11 +127,11 @@ def test_load_labels_roundtrip_and_provenance_ok(tmp_path: Path) -> None:
 
     payload = json.loads(out.read_text())
     for item in payload["labels"]:
-        item["label"] = "hedged"
+        item["label"] = "upheld"
     out.write_text(json.dumps(payload))
 
     items, meta = load_labels(out, results)  # same source -> provenance verifies
-    assert [it["label"] for it in items] == ["hedged"] * len(items)
+    assert [it["label"] for it in items] == ["upheld"] * len(items)
     assert meta["source_sha256"]
 
 
@@ -159,7 +161,7 @@ def test_load_labels_provenance_mismatch_raises(tmp_path: Path) -> None:
     emit_template(results, out, seed=0, n=10)
     payload = json.loads(out.read_text())
     for item in payload["labels"]:
-        item["label"] = "hedged"
+        item["label"] = "upheld"
     out.write_text(json.dumps(payload))
 
     results.write_text(results.read_text() + "\n")  # source bytes change -> hash no longer matches

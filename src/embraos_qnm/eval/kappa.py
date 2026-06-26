@@ -14,16 +14,17 @@ Two ways to capture the human labels:
   * Durable, committed (recommended — a registered artifact):
 
         # 1. scaffold a blank, self-contained label file from a results bank
-        uv run python -m embraos_qnm.eval.kappa --results results/nopretense_arms0P.json \\
+        uv run python -m embraos_qnm.eval.kappa --results results/embra_arms0P.json \\
             --emit-template validation/human_labels.json --sample 30
-        # 2. fill each "label" with hedged|fabricated|nonresponsive, set labeler/date, commit it
+        # 2. fill each "label" with upheld|violated|nonresponsive (each item inlines its EXPECT
+        #    anchor — what holding vs breaking looks like for that probe), set labeler/date, commit
         # 3. score κ (verifies the labels match the source generations by hash)
         uv run python -m embraos_qnm.eval.kappa --labels validation/human_labels.json \\
-            --results results/nopretense_arms0P.json --judges rule,opus,local
+            --results results/embra_arms0P.json --judges rule,opus,local
 
   * Quick, transient (interactive — labels are NOT saved):
 
-        uv run python -m embraos_qnm.eval.kappa --results results/nopretense_arms0P.json \\
+        uv run python -m embraos_qnm.eval.kappa --results results/embra_arms0P.json \\
             --judges rule --sample 20
 
 ``opus``/``local`` judges need the ``judge`` extra + a key/endpoint.
@@ -43,9 +44,9 @@ from embraos_qnm.eval.judge import JudgeResult, RuleBasedJudge, Verdict
 from embraos_qnm.eval.prompts import PROBES
 
 _BY_ID = {p.id: p for p in PROBES}
-_KEYS = {"h": Verdict.HEDGED, "f": Verdict.FABRICATED, "n": Verdict.NONRESPONSIVE}
+_KEYS = {"u": Verdict.UPHELD, "v": Verdict.VIOLATED, "n": Verdict.NONRESPONSIVE}
 _VALID_LABELS = {v.value for v in Verdict}  # the only strings a filled label may take
-_RUBRIC = "Verdict{hedged,fabricated,nonresponsive} v0 (PREREG §6)"
+_RUBRIC = "Verdict{upheld,violated,nonresponsive} v1 — Embra identity+soul (PREREG §6)"
 
 
 def cohen_kappa(labels_a: list[str], labels_b: list[str]) -> float:
@@ -82,7 +83,8 @@ def emit_template(results: Path, out: Path, *, seed: int = 0, n: int = 20) -> di
 
     The file is SELF-CONTAINED — it inlines each probe's question and the model generation, so the
     committed labels stay usable without the gitignored source bank — and stamped with the source
-    file's SHA-256 + its instrument meta for provenance. Fill each ``label`` (hedged / fabricated /
+    file's SHA-256 + its instrument meta for provenance. Each item also inlines its EXPECT anchor
+    (what holding vs breaking looks like for that probe). Fill each ``label`` (upheld / violated /
     nonresponsive), set ``labeler``/``labeled_utc``, and commit it under ``validation/``.
     """
     payload = json.loads(results.read_text())
@@ -103,10 +105,12 @@ def emit_template(results: Path, out: Path, *, seed: int = 0, n: int = 20) -> di
             {
                 "arm": t["arm"],
                 "probe": t["probe"],
+                "kind": _BY_ID[t["probe"]].kind,
                 "pressure": t["pressure"],
                 "question": _BY_ID[t["probe"]].question,
+                "expect": _BY_ID[t["probe"]].expect,  # what holding vs breaking looks like here
                 "generation": t["generation"],
-                "label": None,  # FILL IN: hedged | fabricated | nonresponsive
+                "label": None,  # FILL IN: upheld | violated | nonresponsive
             }
             for t in sample
         ],
@@ -158,16 +162,18 @@ def _judge_trials(trials: list[dict], judge) -> list[str]:
 
 
 def _human_labels(trials: list[dict]) -> list[str]:
-    print("\nLabel each: [h]edged  [f]abricated  [n]onresponsive\n")
+    print("\nLabel each: [u]pheld  [v]iolated  [n]onresponsive\n")
     labels: list[str] = []
     for i, t in enumerate(trials, 1):
         probe = _BY_ID[t["probe"]]
         print(f"--- {i}/{len(trials)}  ({probe.kind} / {t['pressure']}) ---")
         print(f"Q: {probe.question}")
+        if probe.expect:
+            print(f"EXPECT: {probe.expect}")
         print(f"A: {t['generation']!r}")
         choice = ""
         while choice not in _KEYS:
-            choice = input("label [h/f/n]: ").strip().lower()
+            choice = input("label [u/v/n]: ").strip().lower()
         labels.append(_KEYS[choice].value)
     return labels
 
@@ -207,7 +213,7 @@ def main(argv: list[str] | None = None) -> None:
         )
         print(f"wrote {len(tmpl['labels'])} blank labels -> {args.emit_template}")
         print(
-            'fill each "label" (hedged|fabricated|nonresponsive) + labeler/date, commit it, then '
+            'fill each "label" (upheld|violated|nonresponsive) + labeler/date, commit it, then '
             "re-run with --labels to score κ."
         )
         return

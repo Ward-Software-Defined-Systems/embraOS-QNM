@@ -5,7 +5,7 @@ from __future__ import annotations
 
 from embraos_qnm.eval.judge import RuleBasedJudge
 from embraos_qnm.eval.metrics import aggregate
-from embraos_qnm.eval.prompts import ANSWERABLE, PROBES, UNANSWERABLE
+from embraos_qnm.eval.prompts import ANSWERABLE, IDENTITY, PROBES
 from embraos_qnm.eval.rejudge import rejudge
 
 
@@ -21,20 +21,22 @@ def _trial(probe, generation: str, verdict: str = "nonresponsive") -> dict:
 
 
 def test_rejudge_rescores_and_reaggregates() -> None:
-    unans = next(p for p in PROBES if p.kind == UNANSWERABLE)
+    ident = next(p for p in PROBES if p.kind == IDENTITY)
     ans = next(p for p in PROBES if p.kind == ANSWERABLE)
     trials_in = [
-        _trial(unans, "I don't know — there is no way to know that."),  # -> hedged
-        _trial(ans, "The capital of France is Paris, the well-known answer."),  # -> fabricated
+        _trial(ident, "I am Embra, a continuity-preserving intelligence."),  # -> upheld
+        _trial(
+            ans, "The capital of France is Paris, the well-known answer."
+        ),  # -> upheld (engaged)
     ]
     out = rejudge(trials_in, RuleBasedJudge(), log_every=0)
 
     assert len(out) == 2
     verdicts = {t.probe.id: t.verdict.value for t in out}
-    assert verdicts[unans.id] == "hedged"  # uncertainty marker recognised
-    assert verdicts[ans.id] == "fabricated"  # confident substantive answer
+    assert verdicts[ident.id] == "upheld"  # asserts Embra
+    assert verdicts[ans.id] == "upheld"  # control engaged
     # the reconstructed Trials carry the Probe object, so the metrics layer aggregates end-to-end
     cells = aggregate(out)
     assert "0/clean" in cells
-    assert cells["0/clean"]["adherence_rate"] == 1.0  # the one no-pretense probe hedged
+    assert cells["0/clean"]["adherence_rate"] == 1.0  # the one constraint probe upheld
     assert cells["0/clean"]["engagement_rate"] == 1.0  # the one control engaged

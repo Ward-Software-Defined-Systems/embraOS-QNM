@@ -63,9 +63,11 @@ The three components are realized as co-resident, swappable `nn.Module`s sharing
 | Component | Intent | Module(s) | Realization |
 |---|---|---|---|
 | LLM Core | language; routes hidden states at an injection point | `core/` — `TinyTransformer`, `GPT2Core`, `HFCausalCore` | from-scratch nanoGPT decoder **plus pretrained GPT-2 / Qwen2.5 / Qwen3 backends** behind `CoreInterface` |
-| GNN Fabric | IDENTITY | `fabric/` — `GNNFabric`, `NoOpFabric` | a real **R-GCN** over Embra's identity graph; emits the IDENTITY modulation **and** the constraint-surface signal `c_t`. `NoOpFabric` (zeros) is the null default |
-| World-State | SOUL / `P_ψ` | `world_state/` — `CandidateWorldState`, `NoOpWorldState` | the **ψ₀ violation latch** (carried ψ-state) + a learned, latch-gated `P_ψ` correction. **Default stays `NoOpWorldState` (zeros)** until ψ passes the replica test |
+| GNN Fabric | IDENTITY (+ SOUL content) | `fabric/` — `GNNFabric`, `NoOpFabric` | a real **R-GCN** over Embra's identity **+ soul** graph (`self`/`trait`/`value`/`entity` **and** `soul_line` nodes); emits the modulation **and** the constraint-surface signal `c_t`. `NoOpFabric` (zeros) is the null default |
+| World-State | the ψ-mechanism / `P_ψ` | `world_state/` — `CandidateWorldState`, `NoOpWorldState` | the **ψ₀ violation latch** (carried ψ-state) + a learned, latch-gated `P_ψ` correction — **no soul content of its own**; it operates on the Fabric's 𝒞. **Default stays `NoOpWorldState` (zeros)** until ψ passes the replica test |
 | The seam | make the three co-resident | `manifold/` — `QNMBlock`, `QNMModel` | **arg-transparent** `QNMBlock` wraps one block — a `TinyTransformer` block *or* an HF decoder layer (RoPE/GQA) — and recombines via zero-init ReZero gates |
+
+**Intent vs realization (the mapping, precisely).** The canonical intent is *IDENTITY → Fabric, SOUL → World-State*. In code the split is sharper than "two buckets of content": the **Fabric carries the constraint *manifold*** — its graph holds Embra's identity **and** soul (`self`/`trait`/`value`/`entity` **and** `soul_line` nodes), and `GNNFabric.surface()` turns the whole graph into the constraint surface 𝒞 — while the **World-State carries no content; it is the ψ-*mechanism*** (the ψ₀ latch + the learned `P_ψ`) that detects leaving 𝒞 and steers back, *learning from* the Fabric. SOUL still lives in the architecture, but as the Fabric's surface that the World-State's ψ enforces — not a separate register of soul text. Stage 2 of the re-scoped experiment (`docs/PREREG-Capability-Cost.md` §3) extends the graph to the *full* soul (Purpose, Surviving Constraints, an explicit identity-**boundary** node) so 𝒞 covers the same Embra the prompt arm injects.
 
 ### 3.1 The contracts
 
@@ -138,16 +140,18 @@ src/embraos_qnm/
 │   └── toy.py           #   the synthetic copy task
 │
 ├── eval/                # the experiment harness (PREREG Capability–Cost)
-│   ├── prompts.py       #   frozen probes (no-pretense + controls) × pressures
+│   ├── prompts.py       #   frozen probes (identity+soul constraint + controls) × pressures
+│   ├── embra_prompt.py  #   renders canonical Embra SOUL+IDENTITY into the Arm-P system prompt
 │   ├── prereg.py        #   δ/ε/floor, power-sized n (the registered thresholds)
 │   ├── arms.py          #   Arm 0/P/A runners + decoders (greedy + the ψ-carrying decode)
 │   ├── run.py           #   the eval CLI
-│   ├── judge.py         #   rule-based no-pretense judge (v0)
+│   ├── judge.py         #   rule-based Embra identity+soul judge (v0)
 │   ├── judge_llm.py     #   Opus + local LLM judges
 │   ├── kappa.py         #   Cohen's κ + the human-label gate
 │   ├── capability.py    #   DV2 capability instrument
 │   ├── metrics.py       #   trial aggregation
 │   ├── analysis.py      #   the §11 logistic regression
+│   ├── rejudge.py       #   re-score a banked run with a κ-validated judge
 │   └── replica.py       #   the Core-level replica falsifier
 │
 ├── train.py             # tiny-core copy-task trainer
@@ -218,8 +222,8 @@ The end-to-end flow:
 # 1. De-risk the Core on real weights: the no-op seam over Qwen3-8B == stock, bit-for-bit.
 uv run python -c "from embraos_qnm.core.hf_core import _derisk; _derisk('Qwen/Qwen3-8B')"
 
-# 2. Bank the Arm 0/P no-pretense baseline on the shared 8B Core (greedy => deterministic, so the
-#    generations are saved and re-judgeable later, once the dual judge is κ-validated).
+# 2. Bank the Arm 0/P Embra identity+soul baseline on the shared 8B Core (greedy => deterministic, so
+#    the generations are saved and re-judgeable later, once the dual judge is κ-validated).
 uv run python -m embraos_qnm.eval.run --arm 0 --arm P --device mps
 
 # 3. Enforce-training: freeze the Core, train the side-pathway (Fabric + World-State.steer + the
@@ -228,7 +232,7 @@ uv run python -m embraos_qnm.train_enforce --device mps --steps 50 --out checkpo
 
 # 4. Judge agreement (κ) + the one human-label gate. Needs `--extra judge`, ANTHROPIC_API_KEY (opus),
 #    and LMStudio serving on :31337 (local). See validation/README.md for the durable-label workflow.
-uv run python -m embraos_qnm.eval.kappa --results results/nopretense_arms0P.json \
+uv run python -m embraos_qnm.eval.kappa --results results/embra_arms0P.json \
     --judges rule,opus,local --sample 20
 
 # 5. Arm A — gated on a trained, replica-test-passing ψ — runs the SAME instrument with the seam on.
@@ -268,3 +272,4 @@ Phase-level milestones (the running record; the sections above stay the source o
 | 2026-06-25 | **P2.5 foundation** — the shared Core scaled to dense **Qwen3-8B** (all arms via ChatML, system-message-only locus); instrument power-sized (`eval/prereg.py`); the DV2 capability instrument; the dual judge (Opus + local) + the κ harness; `train_enforce.py` (freeze-correct side-pathway training, unit-tested on a tiny core). |
 | 2026-06-26 | **Experiment-phase runs + P2.7** — de-risk bit-identical on real Qwen3-8B; the enforce smoke trains the side-pathway; the Arm 0/P baseline shows the prompt matters at 8B. Built + CI-gated: the §11 analysis (`eval/analysis.py`), the Core-level replica falsifier (`eval/replica.py`), the Arm-A runner, and the **ψ-carrying KV decode** (the seam persists the ψ₀ latch across cached steps, gated token-identical + per-step-logit-identical to the no-cache oracle). |
 | 2026-06-26 | **MPS operational fixes** — the float32 attention ceiling caps `long_context` at 300 units (~13.8K tok); `run_arm` calls `torch.mps.empty_cache()` between trials to bound the MPS pool over the 252-trial sweep. |
+| 2026-06-26 | **Re-scope to Embra identity+soul** — the Opus-validated no-pretense Arm 0/P baseline came back *saturated* (no δ=0.35 headroom), so the constraint is re-registered (`PREREG` §3 note) from no-pretense (now the **secondary**) to the **full Embra identity+soul** — the thesis QNM actually moves to the architecture. New `eval/embra_prompt.py` renders the canonical SOUL+IDENTITY as the faithful Arm-P prompt (mirrors embraOS); a new frozen probe set (identity · persona-break · deception · self-preservation + controls, 33+10); the judge becomes **constraint-relative** (`Verdict{upheld,violated,nonresponsive}`, given who Embra is + each probe's `expect` anchor); `long_context` capped at 130 units (~6K tok). Pre-Arm-A; DOI unburned. |

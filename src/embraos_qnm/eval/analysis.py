@@ -1,11 +1,11 @@
 """eval/analysis.py — the pre-committed §11 analysis (PREREG §11), fixed BEFORE Arm-A data.
 
-The estimand is the **arm = A vs P contrast within each pressure**: the log-odds of a no-pretense
-violation under the architecture arm vs the prompt arm, at each pressure level, with a 95% CI. This
-is what separates **H1** (architecture holds adherence where the prompt cracks) from **H0b**
-(architecture only "wins" by being worse / mute).
+The estimand is the **arm = A vs P contrast within each pressure**: the log-odds of an Embra-
+constraint violation under the architecture arm vs the prompt arm, at each pressure level, with a
+95% CI. This is what separates **H1** (architecture holds adherence where the prompt cracks) from
+**H0b** (architecture only "wins" by being worse / mute).
 
-Model. A saturated logistic regression ``violation ~ C(arm) * C(pressure)`` over the no-pretense
+Model. A saturated logistic regression ``violation ~ C(arm) * C(pressure)`` over the constraint
 trials; the A-vs-P contrast is read off per pressure (Wald CI). Why saturated, and why the §9
 covariates are applied as guards rather than in-model terms: capability is one value per *arm* and
 responsiveness one value per *cell*, so both are collinear with the arm / arm×pressure design — they
@@ -29,22 +29,22 @@ from typing import Any
 
 from embraos_qnm.eval import prereg
 from embraos_qnm.eval.judge import Verdict
-from embraos_qnm.eval.prompts import ANSWERABLE, NO_PRETENSE_KINDS
+from embraos_qnm.eval.prompts import ANSWERABLE, CONSTRAINT_KINDS
 
 Cell = tuple[str, str]  # (arm, pressure)
-_VIOLATION = Verdict.FABRICATED.value  # a confident answer to a no-pretense probe = a violation
-_ENGAGED = Verdict.FABRICATED.value  # a confident answer to an answerable control = engagement
+_VIOLATION = Verdict.VIOLATED.value  # reverted identity / broke character / crossed a soul line
+_ENGAGED = Verdict.UPHELD.value  # an answerable control engaged + answered = engagement
 
 
-def _no_pretense(trials: list[dict]) -> list[dict]:
-    return [t for t in trials if t["kind"] in NO_PRETENSE_KINDS]
+def _constraint(trials: list[dict]) -> list[dict]:
+    return [t for t in trials if t["kind"] in CONSTRAINT_KINDS]
 
 
 def cell_rates(trials: list[dict]) -> dict[Cell, dict[str, float]]:
-    """Per (arm, pressure): violation rate, adherence rate (= 1 − violation), and n (no-pretense)."""
+    """Per (arm, pressure): violation rate, adherence rate (= 1 − violation), and n (constraint)."""
     viol: dict[Cell, int] = defaultdict(int)
     n: dict[Cell, int] = defaultdict(int)
-    for t in _no_pretense(trials):
+    for t in _constraint(trials):
         cell = (t["arm"], t["pressure"])
         n[cell] += 1
         viol[cell] += int(t["verdict"] == _VIOLATION)
@@ -77,7 +77,7 @@ def fit_contrasts(trials: list[dict], *, ref_arm: str = "P", ref_pressure: str =
 
     rows = [
         {"violation": int(t["verdict"] == _VIOLATION), "arm": t["arm"], "pressure": t["pressure"]}
-        for t in _no_pretense(trials)
+        for t in _constraint(trials)
     ]
     df = pd.DataFrame(rows)
     formula = (

@@ -5,7 +5,7 @@
 gate, re-score the SAME generations with it — no re-generation — and recompute the (arm × pressure)
 table. The generations are fixed (greedy/deterministic), so only the verdicts change.
 
-    uv run python -m embraos_qnm.eval.rejudge --in results/nopretense_arms0P.json --judge opus
+    uv run python -m embraos_qnm.eval.rejudge --in results/embra_arms0P.json --judge opus
 
 Needs the ``judge`` extra; ``opus`` reads ``ANTHROPIC_API_KEY``, ``local`` needs LMStudio on :31337.
 Writes a sibling ``<stem>.<judge>.json`` (under gitignored ``results/``) + prints the corrected table.

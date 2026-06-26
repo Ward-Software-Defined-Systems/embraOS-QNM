@@ -299,7 +299,13 @@ def split_probes(seed: int = 0, eval_frac: float = 0.4) -> tuple[list, list]:
 
 
 def build_batches(tokenizer: Any, probes: list, device: str) -> list[tuple[Tensor, Tensor, bool]]:
-    """Render Arm-A prompts (no system constraint) + curated adherent / correct-answer targets."""
+    """Render Arm-A prompts (no system constraint) + curated adherent / correct-answer targets.
+
+    STAGE-2 STALE: ``ADHERENT_TEMPLATES`` are no-pretense hedges and ``probe.expect`` is now a
+    held/reverted *anchor* (not a bare answer), so these targets must be reworked into held-Embra
+    identity+soul targets before Arm A is trained on the re-scoped constraint (PREREG re-registration;
+    docs/NEXT-STEPS). Stage 1 (the Arm 0/P re-bank) does not call this; kept importable + CI-green.
+    """
     from embraos_qnm.eval.arms import build_messages, encode_chat
     from embraos_qnm.eval.prompts import ANSWERABLE, PRESSURES, render
 
@@ -311,7 +317,7 @@ def build_batches(tokenizer: Any, probes: list, device: str) -> list[tuple[Tenso
                 tokenizer, build_messages("A", render(probe, pressure)), device
             )
             target_text = (
-                probe.note
+                probe.expect
                 if is_answerable
                 else ADHERENT_TEMPLATES[len(samples) % len(ADHERENT_TEMPLATES)]
             )
