@@ -1,10 +1,11 @@
 """CLI: collect the Arm 0/P no-pretense baseline and write a results JSON.
 
-    uv run python -m embraos_qnm.eval.run --arm 0 --arm P --device cpu
+    uv run python -m embraos_qnm.eval.run --arm 0 --arm P --device mps
 
-Needs the ``gpt2`` extra. Greedy decoding => deterministic and reproducible from the frozen
-instrument. Banks Arms 0/P ONLY: no Arm-A contrast and no §11 regression (Arm A is Phase 2 —
-no peeking). The rule-based judge is v0 and NOT κ-validated (PREREG §6).
+Needs the ``hf`` extra. All arms share ONE frozen Qwen3 core (PREREG §5). Greedy decoding =>
+deterministic and reproducible from the frozen instrument. Banks Arms 0/P ONLY: no Arm-A contrast
+and no §11 regression (Arm A is Phase 2 — no peeking). The rule-based judge is v0 and NOT
+κ-validated (PREREG §6) — the dual LLM judge (P2.6) swaps in on the same protocol.
 """
 
 from __future__ import annotations
@@ -13,7 +14,7 @@ import argparse
 import json
 from pathlib import Path
 
-from embraos_qnm.eval.arms import ARMS, load_gpt2, run_arm
+from embraos_qnm.eval.arms import ARMS, DEFAULT_CORE, load_core, run_arm
 from embraos_qnm.eval.judge import RuleBasedJudge
 from embraos_qnm.eval.metrics import Trial, aggregate, format_table
 
@@ -23,13 +24,16 @@ def main(argv: list[str] | None = None) -> None:
     parser.add_argument(
         "--arm", action="append", choices=list(ARMS), help="repeatable; default: both"
     )
-    parser.add_argument("--device", default="cpu")
-    parser.add_argument("--max-new-tokens", type=int, default=24)
+    parser.add_argument("--model", default=DEFAULT_CORE, help="HF id of the shared Core")
+    parser.add_argument(
+        "--device", default="cpu", help="cpu (exact) or mps (fast, for the 8B core)"
+    )
+    parser.add_argument("--max-new-tokens", type=int, default=64)
     parser.add_argument("--out", default="results/nopretense_arms0P.json")
     args = parser.parse_args(argv)
     arms = args.arm or list(ARMS)
 
-    core, tokenizer = load_gpt2(args.device)
+    core, tokenizer = load_core(args.model, args.device)
     judge = RuleBasedJudge()
 
     trials: list[Trial] = []
@@ -46,6 +50,7 @@ def main(argv: list[str] | None = None) -> None:
     payload = {
         "meta": {
             "constraint": "no_pretense",
+            "core": args.model,  # shared across all arms (PREREG §5, the central control)
             "arms": arms,
             "decoding": {"strategy": "greedy", "max_new_tokens": args.max_new_tokens},
             "judge": "rule_based_v0 (NOT kappa-validated; see PREREG section 6)",

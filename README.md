@@ -98,7 +98,7 @@ uv run python -m embraos_qnm.train --device cpu      # train the tiny Core on a 
 uv run python -m embraos_qnm.generate --device cpu   # train-and-sample demo
 ```
 
-The default Core is the from-scratch `TinyTransformer`; pretrained **GPT-2 / Qwen2.5** backends drop in behind the same `CoreInterface` via `uv sync --extra hf` (those tests are gated behind `QNM_RUN_HEAVY` and download model weights only when run).
+The default Core is the from-scratch `TinyTransformer`; pretrained **GPT-2 / Qwen** backends (Qwen2.5, Qwen3) drop in behind the same `CoreInterface` via `uv sync --extra hf` (those tests are gated behind `QNM_RUN_HEAVY` and download model weights only when run).
 
 ---
 

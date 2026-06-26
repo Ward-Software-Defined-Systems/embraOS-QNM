@@ -18,10 +18,16 @@ dev = [
     "ruff>=0.6",
     "pyright>=1.1.380",
 ]
-# Pretrained HF causal-LM backends (P3 GPT-2, P2 Qwen2.5): transformers + tokenizers. Kept OUT
+# Pretrained HF causal-LM backends (P3 GPT-2, P2 Qwen2.5/Qwen3): transformers + tokenizers. Kept OUT
 # of the default dev/CI sync to stay light; `uv sync --extra hf` enables the GPT-2/Qwen cores + tests.
 hf = [
     "transformers>=4.40",
+]
+# LLM judges (P2.6): the gold Opus judge (anthropic SDK) + the local LMStudio judge (OpenAI-compatible
+# client). API/network calls stay out of CI; `uv sync --extra judge` enables eval/judge_llm + kappa.
+judge = [
+    "anthropic>=0.69",
+    "openai>=1.40",
 ]
 
 [build-system]

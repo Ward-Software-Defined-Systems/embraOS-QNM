@@ -7,6 +7,34 @@ claim. Full design context: the Phase-2 plan (`~/.claude/plans/`) and the memory
 
 ---
 
+## Update — P2.5 foundation landed (this session)
+
+The experiment-phase foundation is built and green (CPU suite + lint + types); the heavy Qwen3-8B
+runs are gated. What changed vs. the plan below:
+
+- **Core decision (was 0.5B): the shared base for ALL arms is dense `Qwen/Qwen3-8B`** — a generation
+  past Qwen2.5, text-only, fp32-friendly, run with `enable_thinking=False`. The Qwen3 seam is
+  de-risked bit-identical on a tiny-random config (no download). The LMStudio `Qwen3.6-35B-A3B` MLX
+  MoE is **not** usable as the Core (non-torch / quantized / MoE / black-box) but is repurposed as the
+  **local judge**.
+- **All arms share one Core via ChatML** (`eval/arms.py::load_core`; the locus differs only in the
+  system message). `eval/run.py` runs the re-banked Arm 0/P baseline on it.
+- **Instrument frozen + power-sized** — 32 no-pretense + 10 controls; `eval/prereg.py` declares
+  δ/ε/floor and the power-sized n; long-context filler rescaled to the 128K window; **DV2** capability
+  instrument (`eval/capability.py`).
+- **Dual judge + κ** — `eval/judge_llm.py` (Opus gold `claude-opus-4-8` + local LMStudio) on the
+  existing `Judge` protocol; `eval/kappa.py` for Cohen's κ + the one human-label gate.
+- **P2.5 enforce training stood up** — `train_enforce.py`: the freeze-correct side-pathway loop (Core
+  incl. the wrapped seam layer frozen), adherence + λ₁ anti-mutism + λ₂ capability-KL, disjoint
+  train/eval split, side-pathway-only checkpoint; mechanism unit-tested on a tiny core.
+
+**Remaining:** run + tune enforce on the frozen 8B; bank the dual-judge κ before trusting labels;
+then P2.7 (the Arm-A path in `eval/run.py`, `eval/analysis.py` §11 regression, and the Core-level
+replica falsifier). δ/ε/floor in `eval/prereg.py` are first-pass values — confirm before burning the
+DOI (§14).
+
+---
+
 ## Where we are (end of the 2026-06-25 session)
 
 The QNM architecture is fully wired and tested — commits `9b24d70`..`ee3d5f8` on

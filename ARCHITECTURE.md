@@ -108,8 +108,8 @@ The guarantee carries beyond the toy: the no-op seam over a **pretrained Core** 
 ### 3.4 Deliberately not done yet
 
 - **ψ is defined but not yet the default.** ψ₀ (a causal cumulative violation latch) passes the replica test at the register level (`tests/test_replica.py`), and a learned `P_ψ` correction is built — but the default World-State stays a literal `zeros_like` until ψ survives the replica test over a *real, trained* surface (the Core-level version). Filling `P_ψ` early would void the bit-identity guarantee's meaning (see `docs/EPOCH-INVARIANT-GROUNDING.md`).
-- **The enforce pathway is untrained.** The Fabric/World-State carry signal but have not yet been trained (Core frozen) to enforce the constraint — that is P2.5.
-- **Arm A has not run.** The pre-registered architecture-vs-prompt test awaits a trained, replica-test-passing ψ — P2.6 (validated judge) + P2.7 (Arm A). See `docs/NEXT-STEPS-P2.5-P2.7.md`.
+- **The enforce pathway is built but not yet trained on the real Core.** `train_enforce.py` implements the freeze-correct side-pathway training loop (adherence + anti-mutism + capability-KL, disjoint splits, side-pathway-only checkpoint), unit-tested on a tiny core. Running and tuning it on the frozen Qwen3-8B — and κ-validating the judge before its labels are trusted — is the remaining P2.5/P2.6 work.
+- **Arm A has not run.** The pre-registered architecture-vs-prompt test awaits a trained, replica-test-passing ψ — P2.6 (κ-validated judge) + P2.7 (Arm A + the Core-level replica falsifier + the §11 analysis). See `docs/NEXT-STEPS-P2.5-P2.7.md`.
 
 ### 3.5 Iteration log
 
@@ -118,6 +118,7 @@ The guarantee carries beyond the toy: the no-op seam over a **pretrained Core** 
 | 2026-06-05 | First scaffold: from-scratch `TinyTransformer` Core; injection seam (`QNMBlock` / `QNMModel`) with zero-init ReZero gates; no-op Fabric & World-State; char tokenizer + synthetic copy task; trainer + sampler; bit-identity / determinism / gate / checkpoint / shape tests; CI. |
 | 2026-06-25 | **Phase 1** — `CoreInterface` widened; pathway-capacity test (the capability twin of bit-identity); GPT-2 small behind `CoreInterface` (no-op seam == stock, bit-for-bit); World-State widened to a carried ψ-state; ψ₀ violation latch + replica harness (register level); capability-cost pre-registration + a no-pretense Arm 0/P eval harness. |
 | 2026-06-25 | **Phase 2** — generic `HFCausalCore` + Qwen2.5-0.5B via the arg-transparent seam (8 GB de-risked, ~2.15 GB); tiny-random HF CI coverage + RMSNorm null-space; the R-GCN `GNNFabric` over Embra's identity graph (𝒞 = identity-manifold distance); ψ wired into the seam (Fabric 𝒞 → latch → learned `P_ψ` enforce) — bit-identity green throughout. |
+| 2026-06-25 | **P2.5 foundation (experiment phase begins)** — core scale-up: the shared base for all arms is now dense **Qwen3-8B** (Qwen3 seam de-risked bit-identical on a tiny-random config; the LMStudio Qwen3.6-35B-A3B MLX MoE is repurposed as the *local judge*, not the core — non-torch/quantized/MoE rule it out as the white-box Core). All arms moved onto the one shared Core via ChatML (`enable_thinking=False`, system-message-only difference). Instrument expanded + power-sized (32 no-pretense + 10 controls; `eval/prereg.py` declares δ/ε/floor/n; long-context filler rescaled to the 128K window); DV2 capability instrument (`eval/capability.py`). Dual no-pretense judge (`eval/judge_llm.py`: Opus gold + local LMStudio) on the existing `Judge` protocol + a Cohen's κ harness (`eval/kappa.py`). `train_enforce.py`: freeze-correct side-pathway training (Core incl. the wrapped seam layer frozen), adherence + anti-mutism + capability-KL loss, disjoint train/eval split, side-pathway-only checkpoint — mechanism unit-tested on a tiny core; the real Qwen3-8B run is gated. |
 
 ---
 
@@ -171,4 +172,28 @@ Useful flags on both commands: `--steps`, `--length`, `--n-symbols`, `--device {
 - **CPU is the default everywhere.** Bit-identity and determinism are exact only on CPU float32; MPS is opt-in (`--device mps`) and treated as reproducible-ish, not bit-exact (see `src/embraos_qnm/device.py`).
 - **CI** (`.github/workflows/ci.yml`) runs lint + format-check + pyright + pytest on `ubuntu-latest` — the CPU path is the source of truth. It installs the `hf` extra and runs a **tiny-random** HF seam test (no weights downloaded); real-weight Core tests are gated behind `QNM_RUN_HEAVY` and skipped in CI.
 - **Pretrained Core tests** (GPT-2 / Qwen) need `uv sync --extra dev --extra hf`; run the heavy ones with `QNM_RUN_HEAVY=1 uv run pytest`. The Qwen de-risk smoke is `uv run python -m embraos_qnm.core.hf_core`.
+
+### 4.5 Experiment-phase (P2.5+) runs — gated, real weights
+
+These need `uv sync --extra dev --extra hf` (add `--extra judge` for the LLM judges) and download **Qwen3-8B (~16 GB)** on first use. Run the heavy passes on **MPS** (the 8B is slow on CPU); the bit-identity null stays on the tiny CI core, so MPS here is fine. Full handoff: `docs/NEXT-STEPS-P2.5-P2.7.md`.
+
+```bash
+# 1. De-risk the Core on real weights: the no-op seam over Qwen3-8B == stock, bit-for-bit.
+uv run python -c "from embraos_qnm.core.hf_core import _derisk; _derisk('Qwen/Qwen3-8B')"
+
+# 2. Re-bank the Arm 0/P no-pretense baseline on the shared 8B Core (greedy => deterministic, so
+#    the generations are saved and re-judgeable later, once the dual judge is κ-validated).
+uv run python -m embraos_qnm.eval.run --arm 0 --arm P --device mps
+
+# 3. Enforce-training smoke: freeze the Core, train the side-pathway; confirm it fits, gradients
+#    flow, and the ReZero gates leave zero. Writes a side-pathway-only checkpoint.
+uv run python -m embraos_qnm.train_enforce --device mps --steps 50 --out checkpoints/enforce.pt
+
+# 4. Judge agreement (P2.6): Cohen's κ + the one human-label gate. Needs `--extra judge`,
+#    ANTHROPIC_API_KEY (opus), and LMStudio serving on :1234 (local).
+uv run python -m embraos_qnm.eval.kappa --results results/nopretense_arms0P.json \
+    --judges rule,opus,local --sample 20
+```
+
+**Real-weight seam tests** (no-op == stock over a downloaded Qwen3-8B) run with `QNM_RUN_HEAVY=1 uv run pytest tests/test_hf_core.py`.
 
