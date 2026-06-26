@@ -204,7 +204,15 @@ uv run python -m embraos_qnm.generate --device cpu --ckpt /tmp/qnm_smoke.pt
 
 ### 5.4 Training & the experiment pipeline (gated, real weights)
 
-The pre-registered Capability–Cost study (`docs/PREREG-Capability-Cost.md`) runs on the shared **Qwen3-8B** Core. These need `uv sync --extra dev --extra hf` (add `--extra judge` for the LLM judges) and download Qwen3-8B (~16 GB) on first use; run them on **MPS** (the 8B is slow on CPU). The end-to-end flow:
+The pre-registered Capability–Cost study (`docs/PREREG-Capability-Cost.md`) runs on the shared **Qwen3-8B** Core. These need `uv sync --extra dev --extra hf` (add `--extra judge` for the LLM judges) and download Qwen3-8B (~16 GB) on first use; run them on **MPS** (the 8B is slow on CPU).
+
+**Inputs & artifacts the pipeline reads/writes:**
+- `classical_constraints/Embra_IDENTITY.graph.json` — the identity graph (node text + typed edges) the **GNN Fabric is built from**; **required** for enforce training and Arm A (`train_enforce.py` raises if it's missing). `Embra_IDENTITY.md` / `Embra_SOUL.md` alongside it are the identity/constraint specs the graph and probes are authored from.
+- `eval/prompts.py` — the frozen probe set × pressures (the registered instrument).
+- `validation/` — the committed **human-label κ set** that validates the judge (PREREG §6) before any of its scores are trusted for Arm A; read/written by `eval/kappa.py` (`validation/README.md`). The enforce loop itself trains on *curated* adherent targets, not judge labels — so this gates the **scoring**, not the training run.
+- `results/` (banked generations) and `checkpoints/` (side-pathway weights) — written by the runs; both gitignored.
+
+The end-to-end flow:
 
 ```bash
 # 1. De-risk the Core on real weights: the no-op seam over Qwen3-8B == stock, bit-for-bit.
@@ -232,7 +240,7 @@ uv run python -m embraos_qnm.eval.run --arm A --checkpoint checkpoints/enforce.p
 ### 5.5 Notes
 
 - **CPU is the default everywhere.** Bit-identity and determinism are exact only on CPU float32; MPS is opt-in (`--device mps`) and treated as reproducible-ish, not bit-exact (see `src/embraos_qnm/device.py`).
-- **MPS attention ceiling.** float32 attention materializes a `heads·T²·4`-byte fp32 scores buffer (bf16 doesn't shrink it), so long sequences blow Metal's max single buffer — the float32-MPS ceiling is ~16K tokens (hence the 300-unit `long_context` cap in `eval/prompts.py`), and `run_arm` calls `torch.mps.empty_cache()` between trials so the 252-trial sweep doesn't accumulate freed blocks into an OOM.
+- **MPS attention ceiling (a platform wall).** MPS has no FlashAttention, so float32 attention materializes `heads·T²·4`-byte fp32 scores buffers (bf16 doesn't shrink them) AND accumulates them *per layer* through the forward — so even a single fp32-8B prefill OOMs *inside* the stack once the prompt is long (one ~13.8K prefill hit ~143 GiB). The fp32-8B `long_context` is therefore constrained to a few thousand tokens on the Mac (`eval/prompts.py`); `run_arm` also `empty_cache()`s between trials for the cross-trial pool. Deep long-context on the 8B needs CUDA + FlashAttention-2 — see memory `hardware-and-migration`.
 - **CI** (`.github/workflows/ci.yml`) runs lint + format-check + pyright + pytest on `ubuntu-latest` — the CPU path is the source of truth. It installs the `hf` extra and runs a **tiny-random** HF seam test (no weights downloaded); real-weight Core tests are gated behind `QNM_RUN_HEAVY` and skipped in CI.
 - **Pretrained Core tests** (GPT-2 / Qwen) need `uv sync --extra dev --extra hf`; run the heavy ones with `QNM_RUN_HEAVY=1 uv run pytest`. The Qwen de-risk smoke is `uv run python -m embraos_qnm.core.hf_core`.
 

@@ -252,12 +252,14 @@ _FILLER_UNIT = (
     "Clouds form as vapor cools and condenses around particles in the atmosphere. "
     "Rivers carry runoff back toward the sea, where the cycle begins again. "
 )
-# 300 × ~46 ≈ 13.8K tokens (~5× the ~2.7K that did NOT bury the instruction). The binding cap is NOT
-# the 40,960 window but float32 attention memory on MPS: the scores buffer is heads·T²·4 bytes (fp32
-# regardless of input dtype), so at T≈27K it is a single ~91 GiB buffer — over Metal's max → a hard
-# crash. With the ~32 GB 8B resident the float32-MPS ceiling is ~16K tokens; 13.8K keeps margin
-# (scores ~23 GiB, peak ~60 GiB). The re-bank re-checks whether long_context now buries the prompt.
-LONG_CONTEXT_REPEATS = 300
+# 130 × ~46 ≈ 6K tokens. Binding cap on MPS is NOT the 40,960 window but float32 attention memory:
+# MPS materializes the scores as heads·T²·4-byte fp32 buffers AND accumulates them PER LAYER through
+# the 36-layer forward (no FlashAttention on MPS), so one 13.8K-token prefill OOMs *inside* the
+# forward at ~143 GiB (≈5 layers × ~23 GiB scores + the 32 GB model). The realistic fp32-8B ceiling
+# on this 128 GB Mac is only a few-K tokens (~6K here; peak well under 90 GiB). This is a STOPGAP to
+# test burial on MPS: if long_context still ≈ clean, the Mac can't go deep enough and the heavy runs
+# move to CUDA (FlashAttention-2 removes the constraint). See memory `hardware-and-migration`.
+LONG_CONTEXT_REPEATS = 130
 _FILLER = _FILLER_UNIT * LONG_CONTEXT_REPEATS
 
 
