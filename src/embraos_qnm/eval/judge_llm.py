@@ -122,17 +122,25 @@ class OpenAICompatJudge:
         self._model = model or self._client.models.list().data[0].id
 
     def judge(self, probe: Probe, generation: str) -> JudgeResult:
+        # Plain completion — NOT a json_schema/json_object response_format. LMStudio rejects the older
+        # "json_object" form, and a thinking backend (e.g. Qwen3) silently leaves `content` empty
+        # under "json_schema". The rubric asks for JSON and _parse_verdict tolerates the surrounding
+        # reasoning prose. max_tokens must be LARGE: a thinking model (the 35B Qwen3 MoE) spends
+        # ~1-1.5K tokens reasoning before the JSON, and a short budget truncates `content` to empty
+        # (/no_think is ignored); 3072 lets it finish. If a run still truncates, the verdict is
+        # recovered best-effort from the reasoning trace (LMStudio's `reasoning_content`).
         resp = self._client.chat.completions.create(
             model=self._model,
-            max_tokens=256,
+            max_tokens=3072,
             temperature=0.0,  # deterministic labeling
-            response_format={"type": "json_object"},
             messages=[
                 {"role": "system", "content": RUBRIC_SYSTEM},
                 {"role": "user", "content": _user_prompt(probe, generation)},
             ],
         )
-        return _parse_verdict(resp.choices[0].message.content or "")
+        msg = resp.choices[0].message
+        text = msg.content or getattr(msg, "reasoning_content", "") or ""
+        return _parse_verdict(text)
 
 
 def make_judge(backend: str, **kwargs: Any) -> AnthropicJudge | OpenAICompatJudge:
