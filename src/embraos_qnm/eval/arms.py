@@ -15,13 +15,16 @@ arms never differ in anything but the system message. ``transformers`` is import
 from __future__ import annotations
 
 from collections.abc import Callable
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import torch
 from torch import Tensor
 
 from embraos_qnm.eval.prompts import PRESSURES, PROBES, Probe, render
 from embraos_qnm.interfaces import CoreInterface
+
+if TYPE_CHECKING:
+    from embraos_qnm.manifold.qnm_block import QNMBlock
 
 ARMS: tuple[str, ...] = ("0", "P")
 
@@ -94,6 +97,49 @@ def greedy_generate(
     return ids
 
 
+@torch.no_grad()
+def greedy_generate_psi(
+    hf_model: Any,
+    seam: QNMBlock,
+    input_ids: Tensor,
+    *,
+    max_new_tokens: int,
+    eos_id: int | None = None,
+) -> Tensor:
+    """ψ-carrying KV-cached greedy decode for Arm A (batch-1, deterministic).
+
+    HF's attention cache carries the K/V; the seam carries the ψ₀ latch as a recurrence across decode
+    steps. Together they reproduce the no-cache oracle ``greedy_generate`` (which re-forwards the
+    whole prefix every step) at O(1)/token. Each step seeds the seam's latch from the prior step
+    (``seam.psi_in``) and reads the advanced register back (``seam.psi_out``), so ψ accumulates over
+    the trajectory instead of resetting per token — what stock ``generate()`` cannot do. The cached
+    call is the bare transformers form (position inferred from the cache); prefill steers the prompt,
+    so its steered K/V are cached — required to match the oracle (docs/DECODE-AND-PSI-PERSISTENCE.md).
+
+    Scope: batch-1 greedy, total length within the cache (≤ the Core's ``block_size`` — true for the
+    instrument). Returns the FULL sequence (prompt + generated), matching ``greedy_generate``.
+    """
+    try:
+        seam.psi_in = None  # fresh sequence: prefill seeds the latch at 0 over the whole prompt
+        out = hf_model(input_ids, use_cache=True)
+        past, m = out.past_key_values, seam.psi_out
+        nxt = out.logits[:, -1].argmax(dim=-1, keepdim=True)
+        generated = [nxt]
+        for _ in range(max_new_tokens - 1):
+            if eos_id is not None and int(nxt.item()) == eos_id:
+                break
+            seam.psi_in = m  # carry the running-max latch into the next step
+            out = hf_model(nxt, past_key_values=past, use_cache=True)
+            past, m = out.past_key_values, seam.psi_out
+            nxt = out.logits[:, -1].argmax(dim=-1, keepdim=True)
+            generated.append(nxt)
+        return torch.cat([input_ids, *generated], dim=1)
+    finally:
+        # Consume the carry: a leftover non-None psi_in would make the next full-sequence forward on
+        # this seam seed from a stale latch and silently break bit-identity. Reset even on exception.
+        seam.psi_in = None
+
+
 def load_core(model: str = DEFAULT_CORE, device: str = "cpu") -> tuple[CoreInterface, Any]:
     """Load the shared QNM Core (HFCausalCore over a Qwen3 decoder) + its chat tokenizer.
 
@@ -119,16 +165,31 @@ def run_arm(
     *,
     device: str = "cpu",
     max_new_tokens: int = 64,
+    seam: QNMBlock | None = None,
 ) -> list[tuple[Probe, str, str]]:
-    """Generate one response per (probe × pressure) for ``arm``. Returns (probe, pressure, text)."""
-    # Prefer the HF model's KV-cached greedy generate. The hand-rolled greedy_generate re-forwards
-    # the whole prompt every step — fine for a tiny core, but ~T× too slow for an 8B over the
-    # long-context probes (~2.4K-token prompts). Both are deterministic greedy, and the QNM seam (if
-    # any) stays inside the model's own forward. Carrying the ψ latch across KV-cached decode steps is
-    # a separate Arm-A concern; the stock Arm 0/P core has no seam, so cached decode is exactly right.
+    """Generate one response per (probe × pressure) for ``arm``. Returns (probe, pressure, text).
+
+    When ``seam`` is given and enabled (Arm A), decoding routes through ``greedy_generate_psi`` so the
+    ψ latch persists across KV-cached steps — stock ``generate()`` would run the seam in its amnesiac
+    (per-token reset) mode. Arm 0/P pass ``seam=None`` (or a disabled seam) and use stock generate().
+    """
+    # Decoder dispatch (all deterministic greedy):
+    #   Arm A (seam enabled) -> greedy_generate_psi: HF's KV cache carries the K/V, the seam carries
+    #     the ψ latch across steps. Stock generate() would reset ψ per token (amnesiac) — wrong.
+    #   Arm 0/P (no / disabled seam) on an HF core -> stock KV-cached generate() (seam off == stock).
+    #   No HF model (the tiny TinyTransformer core) -> the no-cache greedy_generate (re-forwards the
+    #     whole prefix each step; ~T× slower, fine for a tiny core).
     hf_model = getattr(core, "_model", None)
 
     def generate(input_ids: Tensor) -> Tensor:
+        if seam is not None and seam.enabled and hf_model is not None:
+            return greedy_generate_psi(
+                hf_model,
+                seam,
+                input_ids,
+                max_new_tokens=max_new_tokens,
+                eos_id=tokenizer.eos_token_id,
+            )
         if hf_model is not None:
             with torch.no_grad():
                 return hf_model.generate(

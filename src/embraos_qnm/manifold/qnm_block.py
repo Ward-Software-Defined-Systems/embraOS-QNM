@@ -38,6 +38,13 @@ class QNMBlock(nn.Module):
         # ReZero scalar gates, zero-initialized.
         self.gate_fabric = nn.Parameter(torch.zeros(()))
         self.gate_world = nn.Parameter(torch.zeros(()))
+        # Transient ψ-carry slots for the cached Arm-A decode (eval/arms.greedy_generate_psi):
+        # the decode loop sets psi_in to seed the latch from the prior step and reads psi_out (the
+        # advanced register) back after each forward. NOT registered buffers/params — they must stay
+        # out of state_dict and never affect bit-identity. psi_in is None outside an active ψ-decode,
+        # which is exactly today's behavior (init_state ⇒ zeros over the full sequence).
+        self.psi_in: torch.Tensor | None = None
+        self.psi_out: torch.Tensor | None = None
 
     def forward(self, *args: Any, **kwargs: Any) -> Any:
         # Arg-transparent: pass everything to the wrapped layer and operate on its
@@ -51,12 +58,19 @@ class QNMBlock(nn.Module):
         h_base = out[0] if is_tuple else out
         delta_fabric = self.fabric(h_base)
         # Fabric-supplied 𝒞 (PSI §5): the Fabric emits the constraint-surface signal c_t, the
-        # World-State latches on it and emits the P_ψ correction. psi is initialized per forward
-        # here; cross-decode-step persistence is deferred until ψ is real. The returned register
-        # is discarded for now — with gate_world == 0 (and the no-op's zeros) the contribution is
-        # exactly zero, so bit-identity is untouched.
+        # World-State latches on it and emits the P_ψ correction. The latch is a causal recurrence
+        # over the trajectory; on a full-sequence forward it accumulates over the sequence axis
+        # (psi_in is None ⇒ init_state zeros — byte-for-byte today's behavior). Under the cached
+        # Arm-A decode the loop seeds psi_in with the prior step's register and reads psi_out back,
+        # so the latch persists across decode steps instead of resetting per token (see
+        # eval/arms.greedy_generate_psi and docs/DECODE-AND-PSI-PERSISTENCE.md).
         c = self.fabric.surface(h_base)
-        psi = self.world_state.init_state(h_base.size(0), h_base.device)
-        delta_world, _ = self.world_state(h_base, psi, c)
+        psi = (
+            self.world_state.init_state(h_base.size(0), h_base.device)
+            if self.psi_in is None
+            else self.psi_in
+        )
+        delta_world, psi_next = self.world_state(h_base, psi, c)
+        self.psi_out = psi_next
         new_h = h_base + self.gate_fabric * delta_fabric + self.gate_world * delta_world
         return (new_h, *out[1:]) if is_tuple else new_h

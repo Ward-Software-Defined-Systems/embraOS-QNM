@@ -6,6 +6,12 @@ against a pinned spec, not re-derived. Code-grounded — every claim cites `file
 
 ---
 
+> **Status (2026-06-26): the P2.7 ψ-carrying decode described here is now BUILT** —
+> `eval/arms.greedy_generate_psi` + the `QNMBlock` `psi_in`/`psi_out` carry slots, gated by
+> `tests/test_decode_psi.py` (per-step logit equality vs the no-cache oracle, plus token-identity,
+> anti-vacuity, and no-leak). Still downstream of the Core-level replica gate; the real-8B run stays
+> gated. This document stands as the problem analysis the build was reconciled against.
+
 ## TL;DR
 
 P2.5's fast decode is Hugging Face's stock `generate()` — an **attention KV cache** that assumes the

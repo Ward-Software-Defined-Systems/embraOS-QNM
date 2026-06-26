@@ -66,7 +66,12 @@ def main(argv: list[str] | None = None) -> None:
         if qnm_block is not None:
             qnm_block.enabled = arm == "A"  # seam ON only for Arm A; OFF == bit-identical stock
         for probe, pressure, generation in run_arm(
-            arm, core, tokenizer, device=args.device, max_new_tokens=args.max_new_tokens
+            arm,
+            core,
+            tokenizer,
+            device=args.device,
+            max_new_tokens=args.max_new_tokens,
+            seam=qnm_block,  # Arm A routes to the ψ-carrying decode; 0/P (seam off / None) use stock
         ):
             verdict = judge.judge(probe, generation).verdict
             trials.append(Trial(arm, pressure, probe, generation, verdict))

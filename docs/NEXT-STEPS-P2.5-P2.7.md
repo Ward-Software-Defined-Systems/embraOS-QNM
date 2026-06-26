@@ -105,9 +105,11 @@ holds the trainable parts inside the model tree.
 
 - `eval/run.py`: an Arm-A path that loads the trained side-pathways into the QNM-wrapped core and
   runs under the SAME frozen instrument (prompts/decoding/judge) as Arm 0/P.
-  **Decode caveat:** the seam carries a recurrent ψ latch, so Arm A needs a ψ-carrying KV decode
-  *distinct* from the stock cache used for Arm 0/P (which run seam-off). Full spec + the open
-  mechanism choices + the token-identity falsifier: `docs/DECODE-AND-PSI-PERSISTENCE.md`.
+  **Decode (BUILT 2026-06-26):** the seam carries a recurrent ψ latch, so Arm A uses a ψ-carrying KV
+  decode (`eval/arms.greedy_generate_psi`) *distinct* from the stock cache used for Arm 0/P — it
+  persists the latch across decode steps. Gated by `tests/test_decode_psi.py` (per-step logit
+  equality vs the no-cache oracle + token-identity + anti-vacuity + no-leak). Analysis + the pinned
+  transformers-5.12 cached call: `docs/DECODE-AND-PSI-PERSISTENCE.md`.
 - `eval/analysis.py`: the pre-committed §11 logistic regression
   `violation ~ arm + pressure + arm×pressure` with capability + responsiveness covariates; report
   effect sizes + CIs. The A-vs-P-within-pressure contrast is the **H1 test**; H0b (architecture
