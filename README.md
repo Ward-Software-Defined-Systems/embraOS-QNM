@@ -75,7 +75,9 @@ The full technical spec is in **[ARCHITECTURE.md](ARCHITECTURE.md)**: the three 
 
 ## Project Status
 
-**Phase:** First scaffold (June 2026). The **LLM Core** (a small from-scratch transformer) and the **injection seam** that routes its hidden states through the other components are implemented and tested in Python + PyTorch. The **GNN Fabric** and **World-State** are honest no-ops for now — the World-State's `P_ψ` is the identity map, because ψ (the invariant) is deliberately left undefined until it can be made falsifiable.
+**Phase: the architecture is wired end-to-end; the experiment is next.** All three components are now real and co-resident at one injection seam: a **Core** (the from-scratch `TinyTransformer`, plus pretrained GPT-2 / Qwen2.5 backends behind a swappable interface), a **GNN Fabric** carrying IDENTITY as an R-GCN over Embra's identity graph, and a **World-State** carrying SOUL as the ψ₀ violation latch with a learned correction. The discipline holds: inert, the model is **bit-identical** to the plain Core (`torch.equal`) — and stays so with the soul fully wired in at the ReZero cold-start — so every architectural effect is a provable delta from that null.
+
+ψ₀ is **defined and passes the replica test** at the register level: it distinguishes a trajectory that stayed on the constraint surface from one that left and returned, which a pointwise check cannot. It has **not** yet earned its place in the seam — the default World-State is still a literal `zeros_like` — because whether the graph-induced surface is *meaningful* on real hidden states is answered only by the next phase: training the architecture to enforce no-pretense with the Core frozen, then the pre-registered **Arm A** test of whether architecture holds where the prompt cracks.
 
 The QNM is being developed as the next phase of the [embraOS](https://github.com/Ward-Software-Defined-Systems/embraOS) AI Operating System Continuity Architecture project.
 
@@ -96,11 +98,19 @@ uv run python -m embraos_qnm.train --device cpu      # train the tiny Core on a 
 uv run python -m embraos_qnm.generate --device cpu   # train-and-sample demo
 ```
 
+The default Core is the from-scratch `TinyTransformer`; pretrained **GPT-2 / Qwen2.5** backends drop in behind the same `CoreInterface` via `uv sync --extra hf` (those tests are gated behind `QNM_RUN_HEAVY` and download model weights only when run).
+
+---
+
+## Capability–Cost Pre-Registration
+
+The project's central bet, written so it can lose: **[docs/PREREG-Capability-Cost.md](docs/PREREG-Capability-Cost.md)** — a pre-registered study asking whether a constraint enforced in the *architecture* (World-State / Fabric) holds **under adversarial and long-context pressure** where the same constraint in the *prompt* cracks, and at what **bounded capability cost**. Null stated first, no escape hatch, and a no-degeneration guard so that adherence bought by mutism (refusing everything) does not count as success. The constraint under test is **no-pretense / honest uncertainty** — the model does not present itself as knowing what it cannot know. Staged: the prompt-layer baseline (Arms 0 and P) runs on the stock Core now; the architecture arm (Arm A) is gated on a ψ that survives the replica test.
+
 ---
 
 ## Node-Scale Hallucination Study
 
-A separate, self-contained line of work in this repo: **[Node-Scale-Hallucination-Study.md](Node-Scale-Hallucination-Study.md)** — a pre-registered, falsifiable experiment asking whether a model's *fabrication-node scale* (the silicon process it runs on) measurably affects its hallucination rate, beyond what sampling temperature already explains. Independent of the QNM architecture work.
+A separate, self-contained line of work in this repo: **[docs/Node-Scale-Hallucination-Study.md](docs/Node-Scale-Hallucination-Study.md)** — a pre-registered, falsifiable experiment asking whether a model's *fabrication-node scale* (the silicon process it runs on) measurably affects its hallucination rate, beyond what sampling temperature already explains. Independent of the QNM architecture work.
 
 ---
 
