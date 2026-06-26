@@ -8,6 +8,11 @@ results/
 # QNM enforce checkpoints (side-pathway weights, ~1 GB at d=4096) — produced by train_enforce
 checkpoints/
 
+# QNM internal working docs — handoffs / working analyses kept local for the team, not shipped
+docs/NEXT-STEPS-P2.5-P2.7.md
+docs/P2.7-PSI-CARRY-DECODE-HANDOFF.md
+docs/DECODE-AND-PSI-PERSISTENCE.md
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[codz]

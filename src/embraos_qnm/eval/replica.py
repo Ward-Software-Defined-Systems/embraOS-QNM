@@ -1,4 +1,4 @@
-"""eval/replica.py — the CORE-LEVEL replica test (NEXT-STEPS P2.7): the strong falsifier.
+"""eval/replica.py — the CORE-LEVEL replica test: the strong falsifier.
 
 ``tests/test_replica.py`` shows ψ₀ is trajectory-dependent at the REGISTER level — fed a synthetic
 constraint signal ``c``. This module feeds the latch the REAL thing: ``c_t = g(h_t)`` computed from

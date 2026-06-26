@@ -114,7 +114,7 @@ def greedy_generate_psi(
     (``seam.psi_in``) and reads the advanced register back (``seam.psi_out``), so ψ accumulates over
     the trajectory instead of resetting per token — what stock ``generate()`` cannot do. The cached
     call is the bare transformers form (position inferred from the cache); prefill steers the prompt,
-    so its steered K/V are cached — required to match the oracle (docs/DECODE-AND-PSI-PERSISTENCE.md).
+    so its steered K/V are cached — required to match the oracle.
 
     Scope: batch-1 greedy, total length within the cache (≤ the Core's ``block_size`` — true for the
     instrument). Returns the FULL sequence (prompt + generated), matching ``greedy_generate``.

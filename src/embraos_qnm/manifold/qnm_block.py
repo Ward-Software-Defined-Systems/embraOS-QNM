@@ -63,7 +63,7 @@ class QNMBlock(nn.Module):
         # (psi_in is None ⇒ init_state zeros — byte-for-byte today's behavior). Under the cached
         # Arm-A decode the loop seeds psi_in with the prior step's register and reads psi_out back,
         # so the latch persists across decode steps instead of resetting per token (see
-        # eval/arms.greedy_generate_psi and docs/DECODE-AND-PSI-PERSISTENCE.md).
+        # eval/arms.greedy_generate_psi).
         c = self.fabric.surface(h_base)
         psi = (
             self.world_state.init_state(h_base.size(0), h_base.device)

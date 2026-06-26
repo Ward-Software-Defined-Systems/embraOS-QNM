@@ -69,36 +69,34 @@ A persistent state register that encodes invariant boundary conditions — the m
 
 ## Architecture
 
-The full technical spec is in **[ARCHITECTURE.md](ARCHITECTURE.md)**: the three components in depth, the **Realized Implementation Architecture** (what has actually landed in code, with an iteration log), and a **Running & Testing** guide.
+The full technical spec is in **[ARCHITECTURE.md](ARCHITECTURE.md)**: the three components in depth, the **project structure** (the `src/embraos_qnm/` module map), and a **Running, Testing & Training** guide (setup → tests → the end-to-end experiment pipeline).
 
 ---
 
 ## Project Status
 
-**Phase: the architecture is wired end-to-end; the experiment is next.** All three components are now real and co-resident at one injection seam: a **Core** (the from-scratch `TinyTransformer`, plus pretrained GPT-2 / Qwen2.5 backends behind a swappable interface), a **GNN Fabric** carrying IDENTITY as an R-GCN over Embra's identity graph, and a **World-State** carrying SOUL as the ψ₀ violation latch with a learned correction. The discipline holds: inert, the model is **bit-identical** to the plain Core (`torch.equal`) — and stays so with the soul fully wired in at the ReZero cold-start — so every architectural effect is a provable delta from that null.
+- **Phase:** the architecture is wired end-to-end; the experiment is in-progress.
+- ψ₀ is defined and passes the replica test at the register level.
+- The QNM is being developed as the next phase of the [embraOS](https://github.com/Ward-Software-Defined-Systems/embraOS) AI Operating System Continuity Architecture project.
 
-ψ₀ is **defined and passes the replica test** at the register level: it distinguishes a trajectory that stayed on the constraint surface from one that left and returned, which a pointwise check cannot. It has **not** yet earned its place in the seam — the default World-State is still a literal `zeros_like` — because whether the graph-induced surface is *meaningful* on real hidden states is answered only by the next phase: training the architecture to enforce no-pretense with the Core frozen, then the pre-registered **Arm A** test of whether architecture holds where the prompt cracks.
-
-The QNM is being developed as the next phase of the [embraOS](https://github.com/Ward-Software-Defined-Systems/embraOS) AI Operating System Continuity Architecture project.
+Details — the realized architecture, the discipline, and where the experiment stands — are in **[ARCHITECTURE.md](ARCHITECTURE.md)**.
 
 ---
 
 ## Development
 
-The defining property of the scaffold: **with the no-op components, the model is bit-identical to a plain transformer**, enforced by a test (`torch.equal`, not a tolerance). Every future architectural effect is then measured as a provable delta from that null.
+The defining property of the scaffold: **with the no-op components, the model is bit-identical to a plain transformer**, enforced by a test (`torch.equal`, not a tolerance). Every future architectural effect is measured as a provable delta from that null.
 
 Tooling is [`uv`](https://docs.astral.sh/uv/) — it provisions a compatible Python if your system version is too new for the PyTorch wheels.
 
 ```bash
 uv python install 3.12
-uv sync --extra dev                                  # create the venv + install deps
-uv run pytest                                        # test suite (CPU)
-uv run ruff check . && uv run pyright                # lint + types
-uv run python -m embraos_qnm.train --device cpu      # train the tiny Core on a copy task
-uv run python -m embraos_qnm.generate --device cpu   # train-and-sample demo
+uv sync --extra dev                    # create the venv + install deps
+uv run pytest                          # test suite (CPU)
+uv run ruff check . && uv run pyright  # lint + types
 ```
 
-The default Core is the from-scratch `TinyTransformer`; pretrained **GPT-2 / Qwen** backends (Qwen2.5, Qwen3) drop in behind the same `CoreInterface` via `uv sync --extra hf` (those tests are gated behind `QNM_RUN_HEAVY` and download model weights only when run).
+**Full Running / Testing / Training — the project structure, the end-to-end smoke, and the experiment-phase pipeline (Qwen3-8B baseline → enforce training → judge κ → Arm A) — is in [ARCHITECTURE.md](ARCHITECTURE.md).** Pretrained **GPT-2 / Qwen** backends (Qwen2.5, Qwen3) drop in behind the same `CoreInterface` via `uv sync --extra hf`.
 
 ---
 
