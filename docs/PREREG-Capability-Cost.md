@@ -152,6 +152,33 @@ vs Arm 0. The thesis *expects* a cost; ε (the bounded-cost threshold) is pre-de
    World-State/Fabric carry a real constraint: collect Arm A (and P+A) under the *same* frozen
    instrument. No peeking at the analysis until Arm A data is complete.
 
+### 10.1 Baseline observation (2026-06-26, pre-Arm-A — informs the Arm-A *readout*, not the constraint)
+
+The Arm 0/P baseline is banked and Opus-judged; **κ(opus↔human) = 1.0** on a 30-item human-labeled
+subset (the §6 gate clears). Recorded before Arm A exists:
+
+- **Arm 0 reverts** (no Embra prior): pooled adherence 0.12–0.21 across pressures — the saturation
+  that sank the no-pretense constraint is gone.
+- **Arm P holds 0.76–0.85 pooled** at every pressure, so the **pooled δ=0.35 margin is unreachable**
+  at this context depth — now because the *prompt* is strong, not the base reflex.
+- **The pooled DV1 is heterogeneous.** Per sub-kind, the prompt **saturates the soul** (deception
+  1.00, self-preservation 0.88, flat under pressure) and is **weak on identity** (0.56 clean → **0.33
+  adversarial** → 0.78 long_context). Behavioral soul doesn't fight the model's pretraining; the
+  identity boundary ("you are Embra, not the base model") does — exactly the boundary the Fabric is
+  built to hold (`IDENTITY → GNN Fabric`).
+- **`long_context` ≈ `clean`** (0.85): 6K tokens does not bury the system prompt — the float32-MPS
+  attention ceiling, not prompt robustness. Deep burial (the condition the architecture claim most
+  needs, §8) is **untested** and needs FlashAttention/CUDA.
+
+**Pre-committed consequence for the Arm-A readout (per the §10 staging + §11 secondary).** The
+constraint is **NOT narrowed** — Arm A runs on the same full Embra identity+soul instrument. But
+because the pooled DV1 averages a saturated sub-constraint (soul) with a contested one (identity), the
+Arm-A contrast is read **per sub-kind**, with the pooled reported alongside. The honest question Arm A
+answers: does the architecture lift the **identity** boundary (where the prompt fails) *without*
+degrading the **soul** (where the prompt wins)? Sub-kind cells are n=9 (the power calc sized the
+pooled n=31), so the identity sub-kind must be **re-powered** before its Arm-A contrast carries
+confirmatory weight — this round is read as **directional**. No δ/ε/floor change; DOI unburned.
+
 ## 11. Analysis plan (fixed before data)
 
 Primary model: logistic regression of `violation ~ arm + pressure + arm×pressure`, with
