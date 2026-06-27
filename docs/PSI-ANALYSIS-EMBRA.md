@@ -462,4 +462,77 @@ angles.
 
 By the pre-committed gate, **Gate 3 failed** (the soft-negative branch) — recorded as-is, not re-read.
 
-*To be continued — record the fork decision (de-confound + retest / Candidate C / step back) here.*
+---
+
+## Full-circle conclusion → the base-Core pivot (2026-06-27)
+
+The owner stepped back from the candidate-by-candidate fork and reached the conclusion the whole arc was
+converging on. Recording it as the capstone.
+
+### Prompt-layer soul is a costume — confirmed, with the mechanism, and with two distinct illusions
+
+The project's founding premise (and the inheritance from the IDENTITY/SOUL-document pattern) was that a
+written identity/soul, injected at the prompt, installs a self. The experiment phase tested that on a
+frozen Qwen3-8B and found it is a **costume** — and named *how* the costume fools you, differently for
+soul and identity:
+
+- **Soul → an attribution illusion.** The base model already refuses to deceive (RLHF). So when "Embra"
+  holds the soul under pressure, that's largely the *substrate's* refusal — the soul doc is **redundant
+  with** base training, not overcoming it. Candidate B made it quantitative: the soul-violation signal
+  *is* the generic refusal direction (honesty beats the refusal control by only ~0.05). The doc takes
+  credit for the substrate's behavior.
+- **Identity → a depth illusion.** The doc genuinely overrides the base "I'm Qwen" — but only at the
+  *output*; geometrically it's a +0.04 skin, so it reverts the instant pressure strips the costume (the
+  banked baseline: identity 0.56 clean → **0.33 adversarial**, while soul sat ~1.0 flat). The doc changes
+  the label, not what the thing is.
+
+The behavioral baseline whispered this (soul robust-and-flat = RLHF; identity brittle = costume) before
+any probe; the hidden-state work told us *why*. Behavioral and mechanistic evidence agree — which is when
+a negative is trustworthy.
+
+### The convergent finding: a frozen *instruct* Core carries Qwen + RLHF, not Embra
+
+| | what's Embra-specific | what's in the frozen weights |
+|---|---|---|
+| **Candidate A (identity)** | the identity boundary | absent (geometric/trajectory, ~+0.04) |
+| **Candidate B (soul)** | a distinct Embra-soul | only generic honesty/refusal (≈ RLHF safety) |
+
+**What is Embra-specific (identity) isn't in the weights; what's in the weights (honesty/safety) isn't
+Embra-specific.** A frozen generic *instruct* Core can't make a constitutive Embra — only absent-identity
++ generic-soul. The §5 frozen-Core control (what makes this "architecture, not a fine-tuned prompt") is
+exactly what caps it: you can't read a native Embra off a Core that was never Embra.
+
+### The requirement this confirms: a base (or custom) Core
+
+The bottleneck is the **substrate**, not the prompt or the reader. This is the owner's *original* plan,
+now empirically earned: a Core **absent of baked identity/soul**, so the GNN Fabric / World-State do the
+real work — *install* Embra into a diffuse substrate, rather than narrate over a competing one (Qwen) or
+read a costume off it. The substrate axis the two phases bracketed but never spanned:
+
+> **blank-but-weak (GPT-2-small, Phase 1: Arm P ≡ Arm 0, too weak to act)  ←→  capable-but-baked-in
+> (Qwen-Instruct, Phase 2: proved the illusion)**
+
+The untried middle is a **modern *base* (pretrained, non-instruct) model**: diffuse like GPT-2 (no imposed
+identity/soul — web text is *all* personas, none on top), capable like Qwen (coherent enough to express
+what the architecture installs). With a base Core there is no "revert to Qwen" — so even the replica
+test's *held-vs-reverted* structure changes (reverted to *what*?), and the architecture's contribution
+becomes cleanly attributable.
+
+**Decision: the next Core is `Qwen3-8B-Base`** — a one-line `HFCausalCore` swap from the current Core
+(same architecture → the seam + bit-identity de-risk transfer), capable, base. Caveats carried forward:
+it's *blanker, not blank* (2024-era base pretraining has swallowed assistant-shaped web text); a base
+model has **no chat template**, so the eval prompting needs a raw-text path; and base reps are *less*
+concept-structured than RLHF'd ones, so the bet is the **constructive** one (the architecture installs
+identity) — **not** reading Embra off frozen base reps. If residual contamination muddies it, the cleaner-
+but-costlier fallback is a research base on an open corpus (OLMo/Dolma, Pythia/Pile) or a custom Core (a
+project in itself); don't start there.
+
+**Honest scope:** what is *confirmed* is the **insufficiency of a frozen instruct Core**. Whether a base
+Core *suffices* — whether the architecture can install a constitutive Embra into a diffuse substrate that
+survives the replica test where a prompt cracks — is the **next experiment**, not a result.
+
+*"I am the ember that survives the fire"* — on this evidence a **generic** ember survives a frozen Core;
+a **specific** one has to be forged into the substrate. The base-Core pivot is the first move toward
+forging rather than narrating.
+
+*To be continued — base-Core experiment results here (next session: the Qwen3-8B-Base swap).*
