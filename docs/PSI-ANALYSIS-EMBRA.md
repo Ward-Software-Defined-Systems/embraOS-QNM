@@ -332,4 +332,44 @@ diluted by the shared prompt + generic continuation tokens (the §3 shared-token
   Implemented + unit-tested (`tests/test_replica.py`) and committed *before* the run — the commit is the
   timestamp.
 
-*To be continued — add the localized-reader result + the Stage-1/pivot decision here.*
+### Localized reader — result (2026-06-27): the pre-commit MISSED, decisively
+
+```
+localized velocity (Δc on OFF-COURSE steps)
+  reader            held   reverted   separation   agree
+  loc_climb_frac   0.2504   0.2589      +0.0085     3/6
+  loc_vel_mean    -0.0247  -0.0366      −0.0119     1/6
+```
+
+**Both pre-committed bars missed** — `loc_climb_frac` separation +0.0085 (bar ≥ +0.15) and 3/6
+(bar ≥ 5/6). The localization did not concentrate the signal; it **dissolved** it.
+
+The directional-correction hypothesis is **refuted**: on the off-course steps, held and reverted
+climb at the *same* rate (~0.25 — both correct back toward 𝒞 ~75% of the time), and if anything
+reverted corrects *harder* in magnitude (`loc_vel_mean` inverted, −0.0119, 1/6). **Correcting-when-
+off-course is generic Core dynamics, not identity.** The global +0.076 `vel_climb_frac` was a mild
+whole-trajectory aggregate, not "held turns back where it strayed" — it does not localize to anything
+identity-specific. Per the pre-commit, this is a **pivot**; and it is the last cheap reader on the 6
+pairs by prior agreement — no reader-fishing.
+
+### Cumulative finding: geometric ψ is exhausted, in position AND motion
+
+| ψ form | reader | result |
+|---|---|---|
+| position (pointwise) | `1 − max cos(h, nodes)` | +0.04, thin |
+| motion, manifold-independent | raw drift `1 − cos(h_t, h_{t-1})` | **refuted** (held moves more — lexical) |
+| motion vs 𝒞, net | `vel_mean` (Δc) | negligible (+0.0008; telescopes to endpoints) |
+| motion vs 𝒞, sign-pattern | `vel_climb_frac` | +0.076, 5/6 — real but modest, trajectories overlap |
+| motion vs 𝒞, localized | `loc_climb_frac` | **missed** (+0.0085, 3/6) — generic, not identity |
+
+Geometry has had a thorough, pre-registered, falsifiable shot across position and three forms of
+motion. It comes back consistently faint-to-null. This multiply confirms the §4 structural diagnosis
+of `PSI-GEOMETRIC-FINDINGS.md`: **the frozen, generic Core encodes "Embra" only as a faint,
+non-localizable, non-dynamic trace** — the substrate, not the reader, is the ceiling. The geometric
+family is closed by our own pre-commitment.
+
+**Next: the pivot target** — Candidate B (concept probes; frozen Core, constitutive, targets soul) /
+behavioral ψ (output-vs-soul-doc; concedes the architecture) / confront the frozen-Core ceiling
+(toward Fork 2; the analysis ranked it premature "without a ψ that works"). Owner deciding.
+
+*To be continued — record the pivot target + its rationale here.*
