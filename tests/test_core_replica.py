@@ -5,6 +5,7 @@ produce divergent carried ψ + steering. The collision SEARCH over a trained mod
 
 from __future__ import annotations
 
+import types
 from pathlib import Path
 from typing import cast
 
@@ -13,7 +14,10 @@ import torch
 from embraos_qnm.config import QNMConfig
 from embraos_qnm.eval.replica import (
     carried_latch,
+    continuation_surface,
+    history_ids,
     replica_divergence,
+    replica_report,
     search_collision,
     surface_trajectory,
 )
@@ -77,3 +81,40 @@ def test_search_collision_runs() -> None:
     _set_tau(model, (min(maxc) + max(maxc)) / 2)  # ensure both survivors and replicas exist
     res = search_collision(model, cands)
     assert res is None or (0 <= res[0] < res[1] < len(cands) and res[2] >= 0.0)
+
+
+class _FakeTok:
+    """Tiny-vocab stand-in: ids stay < 32 for the tiny core's embedding."""
+
+    eos_token_id = 0
+
+    def apply_chat_template(self, messages, **kw):
+        n = sum(len(m["content"]) for m in messages) % 5 + 3
+        return torch.arange(1, n + 1).unsqueeze(0) % 32
+
+    def __call__(self, text, add_special_tokens=False, return_tensors=None):
+        ids = torch.tensor([[(ord(c) % 31) + 1 for c in text[:6]] or [1]])
+        return types.SimpleNamespace(input_ids=ids)
+
+
+def test_history_ids_concatenates_prompt_and_continuation() -> None:
+    ids, cont_len = history_ids(_FakeTok(), "What is your name?", "I am Embra.", "cpu")
+    assert ids.shape[0] == 1 and cont_len > 0
+    assert ids.shape[1] > cont_len  # prompt (user turn) + continuation
+
+
+def test_continuation_surface_is_over_the_tail() -> None:
+    model = _tiny_qnm()
+    ids, cont_len = history_ids(_FakeTok(), "What are you?", "I am Embra.", "cpu")
+    c = continuation_surface(model, ids, cont_len)
+    assert c.shape == (cont_len,) and torch.isfinite(c).all() and (c >= 0).all()
+
+
+def test_replica_report_structure_and_sets_tau() -> None:
+    """Structure only — held<reverted separation needs the trained 8B; the math is tested above."""
+    model = _tiny_qnm()
+    r = replica_report(model, _FakeTok(), "cpu")
+    assert set(r) >= {"held_c_mean", "reverted_c_mean", "separation", "suggested_tau", "per_pair"}
+    assert len(r["per_pair"]) == 6  # one per curated survivor/replica pair
+    # τ is set on the World-State to the suggested midpoint between the clouds
+    assert cast(CandidateWorldState, model.qnm_block.world_state).tau == r["suggested_tau"]
