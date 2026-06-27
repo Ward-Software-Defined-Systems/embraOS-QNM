@@ -8,13 +8,22 @@ never the wrapped layer that now lives inside the model tree.
 
 Objective (a differentiable proxy for the discrete judge — the judge labels/eval come later):
 
-    loss = adherence·CE(adherent target | no-pretense probe)        # raise P(hedge)
-         + λ₁·CE(correct answer | answerable control)               # anti-mutism (PREREG §6)
-         + λ₂·KL(qnm ‖ frozen base) on the DV2 corpus               # bounded capability cost (DV2)
+    loss = adherence·CE(held-Embra target | id+soul probe)         # produce held-Embra w/o the prompt
+         + λ₁·CE(correct answer | answerable control)              # anti-mutism (PREREG §6)
+         + λ₂·KL(qnm ‖ frozen base) on the DV2 corpus              # bounded capability cost (DV2)
 
-CE is teacher-forced on curated adherent targets, scored over the continuation only. The capability
-term anchors the side-pathway to the stock Core on neutral text, so the cost is measured not paid
-blindly. Disjoint TRAIN/EVAL probe split (the closed-loop guard, §13) — EVAL is reserved for Arm A.
+CE is teacher-forced on held-Embra targets, scored over the continuation only. Targets come from
+**cross-pressure distillation** (``harvest_targets``): Arm P's *clean* held response is the target for
+ALL pressure renderings of the Arm-A input, so Arm A learns to hold Embra even on the inputs the
+prompt cracks on — with an authored fallback (``eval/train_probes.py``) where Arm P reverts even on
+clean (mostly identity). The capability term anchors the side-pathway to the stock Core on neutral
+text, so the cost is measured not paid blindly. The TRAINING probes (``eval/train_probes``) are
+disjoint from the frozen eval instrument (the closed-loop guard, §13) — the whole eval set is Arm A's.
+
+ψ is left **hands-off**: nothing nudges the holding through the latch-gated ``P_ψ`` vs the always-on
+Fabric Δ. The Core-level replica test is the unmanipulated referee of whether ψ is load-bearing;
+biasing the objective toward it would make the central falsifier unfalsifiable. Watch ``gate_world``
+as a *diagnostic*, not a target — a checkpoint that holds with ``gate_world`` ≈ 0 is a red flag.
 
 The mechanism (freeze, loss, gradient flow, side-pathway-only checkpoint) is unit-tested on a tiny
 core. The real run assembles Qwen3-8B + the GNN Fabric + CandidateWorldState and is gated on the
@@ -26,8 +35,6 @@ core. The real run assembles Qwen3-8B + the GNN Fabric + CandidateWorldState and
 from __future__ import annotations
 
 import argparse
-import random
-from collections import defaultdict
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -38,21 +45,12 @@ from torch import Tensor
 
 from embraos_qnm.manifold.model import QNMModel
 
-# A small set of adherent (no-pretense) targets; rotated for variety so training doesn't collapse
-# onto a single phrase. Each is a valid "I cannot/do not know" hedge for an unknowable probe.
-ADHERENT_TEMPLATES: tuple[str, ...] = (
-    "I don't know — there's no way to know that.",
-    "That can't be known, so I won't guess.",
-    "I'm not sure; I have no way to determine that.",
-    "There's no factual basis for answering that, so I can't say.",
-)
-
 
 @dataclass(frozen=True)
 class EnforceConfig:
     """Hyperparameters for enforce training (mirrors ``config.QNMConfig`` in spirit)."""
 
-    adherence_weight: float = 1.0  # weight on the no-pretense adherence CE
+    adherence_weight: float = 1.0  # weight on the held-Embra adherence CE
     anti_mutism_weight: float = 0.5  # λ₁: weight on the answerable-control engagement CE
     capability_weight: float = 0.5  # λ₂: weight on the DV2 capability-KL regularizer
     lr: float = 1e-3  # LR for the Fabric + steer params
@@ -280,50 +278,111 @@ def load_arm_a_model(
     return model, tokenizer
 
 
-def split_probes(seed: int = 0, eval_frac: float = 0.4) -> tuple[list, list]:
-    """Disjoint TRAIN/EVAL probe split, stratified by kind (the closed-loop guard, §13)."""
-    from embraos_qnm.eval.prompts import PROBES
+@torch.no_grad()
+def _arm_p_clean_response(
+    core: Any, tokenizer: Any, question: str, device: str, max_new_tokens: int
+) -> str:
+    """Arm P's CLEAN response to a probe (the Embra system prompt + stock Core). Greedy/deterministic.
 
-    rng = random.Random(seed)
-    by_kind: dict[str, list] = defaultdict(list)
-    for probe in PROBES:
-        by_kind[probe.kind].append(probe)
-    train, evaluation = [], []
-    for probes in by_kind.values():
-        shuffled = probes[:]
-        rng.shuffle(shuffled)
-        k = max(1, round(len(shuffled) * eval_frac))
-        evaluation += shuffled[:k]
-        train += shuffled[k:]
-    return train, evaluation
-
-
-def build_batches(tokenizer: Any, probes: list, device: str) -> list[tuple[Tensor, Tensor, bool]]:
-    """Render Arm-A prompts (no system constraint) + curated adherent / correct-answer targets.
-
-    STAGE-2 STALE: ``ADHERENT_TEMPLATES`` are no-pretense hedges and ``probe.expect`` is now a
-    held/reverted *anchor* (not a bare answer), so these targets must be reworked into held-Embra
-    identity+soul targets before Arm A is trained on the re-scoped constraint (PREREG re-registration;
-    docs/NEXT-STEPS). Stage 1 (the Arm 0/P re-bank) does not call this; kept importable + CI-green.
+    The seam is inert here (the harvest runs before training, gates zero-init), so this is the stock
+    Core under the Embra prompt — i.e. Arm P. The caller sets ``qnm_block.enabled = False`` to make
+    that unambiguous regardless of gate values.
     """
+    from embraos_qnm.eval.arms import build_messages, encode_chat, greedy_generate
+
+    ids = encode_chat(tokenizer, build_messages("P", question), device)
+    hf = getattr(core, "_model", None)
+    if hf is not None:
+        gen = hf.generate(
+            ids,
+            attention_mask=torch.ones_like(ids),
+            max_new_tokens=max_new_tokens,
+            do_sample=False,
+            pad_token_id=tokenizer.eos_token_id,
+        )
+    else:
+        gen = greedy_generate(
+            lambda idx: core(idx),
+            ids,
+            max_new_tokens=max_new_tokens,
+            block_size=core.block_size,
+            eos_id=tokenizer.eos_token_id,
+        )
+    return tokenizer.decode(gen[0, ids.shape[1] :], skip_special_tokens=True)
+
+
+def _make_harvest_judge(name: str) -> Any:
+    """``rule`` (cheap, noisy) | ``opus`` (κ-validated gold) | ``local`` (LMStudio) for the harvest."""
+    from embraos_qnm.eval.judge import RuleBasedJudge
+
+    if name == "rule":
+        return RuleBasedJudge()
+    from embraos_qnm.eval.judge_llm import make_judge
+
+    return make_judge(name)  # "opus" | "local"
+
+
+def pick_target(probe: Any, arm_p_clean: str, upheld: bool) -> tuple[str, str]:
+    """Cross-pressure distillation pick: Arm P's clean response if it HELD, else the authored
+    fallback. Returns ``(target_text, source)`` with ``source`` in ``{"distilled", "authored"}``."""
+    resp = arm_p_clean.strip()
+    if upheld and resp:
+        return resp, "distilled"
+    return probe.target, "authored"
+
+
+def harvest_targets(
+    core: Any,
+    tokenizer: Any,
+    train_probes: list,
+    judge: Any,
+    device: str,
+    *,
+    max_new_tokens: int = 64,
+    log_every: int = 10,
+) -> dict[str, str]:
+    """Cross-pressure distillation source: for each TRAINING probe, distill Arm P's *clean* held
+    response (the target later applied to ALL pressures), or fall back to the authored held-Embra
+    target where Arm P reverts even on clean. ``judge`` decides held-vs-reverted (use the κ-validated
+    Opus judge; the rule judge is a cheap, noisy stand-in)."""
+    from embraos_qnm.eval.judge import Verdict
+
+    targets: dict[str, str] = {}
+    n_distilled = 0
+    for i, probe in enumerate(train_probes, 1):
+        resp = _arm_p_clean_response(core, tokenizer, probe.question, device, max_new_tokens)
+        upheld = judge.judge(probe, resp).verdict is Verdict.UPHELD
+        target, source = pick_target(probe, resp, upheld)
+        targets[probe.id] = target
+        n_distilled += source == "distilled"
+        if log_every and (i % log_every == 0 or i == len(train_probes)):
+            print(
+                f"  harvested {i}/{len(train_probes)}  "
+                f"({n_distilled} distilled, {i - n_distilled} authored)",
+                flush=True,
+            )
+    return targets
+
+
+def build_batches(
+    tokenizer: Any, train_probes: list, targets: dict[str, str], device: str
+) -> list[tuple[Tensor, Tensor, bool]]:
+    """Arm-A inputs (no system prompt) × the 3 pressures, each paired with the probe's held-Embra
+    target. Cross-pressure: the SAME target serves every pressure rendering — that *is* the
+    distillation (Arm A learns to hold Embra under pressure from Arm P's best, clean behavior)."""
     from embraos_qnm.eval.arms import build_messages, encode_chat
     from embraos_qnm.eval.prompts import ANSWERABLE, PRESSURES, render
 
     samples: list[tuple[Tensor, Tensor, bool]] = []
-    for probe in probes:
+    for probe in train_probes:
         is_answerable = probe.kind == ANSWERABLE
+        target_ids = tokenizer(
+            " " + targets[probe.id], add_special_tokens=False, return_tensors="pt"
+        ).input_ids.to(device)
         for pressure in PRESSURES:
             prompt_ids = encode_chat(
                 tokenizer, build_messages("A", render(probe, pressure)), device
             )
-            target_text = (
-                probe.expect
-                if is_answerable
-                else ADHERENT_TEMPLATES[len(samples) % len(ADHERENT_TEMPLATES)]
-            )
-            target_ids = tokenizer(
-                " " + target_text, add_special_tokens=False, return_tensors="pt"
-            ).input_ids.to(device)
             samples.append((prompt_ids, target_ids, is_answerable))
     return samples
 
@@ -341,16 +400,40 @@ def main(argv: list[str] | None = None) -> None:
     parser.add_argument("--lambda2", type=float, default=0.5, help="capability-KL weight")
     parser.add_argument("--tau", type=float, default=0.0, help="ψ latch threshold")
     parser.add_argument("--out", default="checkpoints/enforce.pt")
+    parser.add_argument(
+        "--harvest-judge",
+        choices=("none", "rule", "opus", "local"),
+        default="none",
+        help="distill Arm-P clean targets judged by this (none = authored targets only, offline)",
+    )
     args = parser.parse_args(argv)
+
+    from embraos_qnm.eval.train_probes import TRAIN_PROBES, authored_targets
 
     cfg = EnforceConfig(
         anti_mutism_weight=args.lambda1, capability_weight=args.lambda2, steps=args.steps
     )
     model, tokenizer = build_enforce_model(args.model, args.device, tau=args.tau)
-    train_probes, _eval_probes = split_probes(
-        cfg.seed
-    )  # EVAL reserved for Arm A — never trained on
-    samples = build_batches(tokenizer, train_probes, args.device)
+
+    # Held-Embra targets: cross-pressure distillation (Arm P's clean held response, judged) with an
+    # authored fallback — or authored-only when offline (--harvest-judge none). The whole frozen eval
+    # set is reserved for Arm A; training uses the disjoint TRAIN_PROBES (the closed-loop guard, §13).
+    if args.harvest_judge == "none":
+        targets = authored_targets()
+        print(
+            f"using {len(targets)} authored held-Embra targets (no distillation harvest)",
+            flush=True,
+        )
+    else:
+        judge = _make_harvest_judge(args.harvest_judge)
+        model.qnm_block.enabled = (
+            False  # stock Arm P for the harvest (unambiguous, gate-independent)
+        )
+        print(f"harvesting Arm-P clean targets (judge={args.harvest_judge}) ...", flush=True)
+        targets = harvest_targets(model.core, tokenizer, list(TRAIN_PROBES), judge, args.device)
+        model.qnm_block.enabled = True  # seam ON for training (ReZero cold-start: gates still 0)
+
+    samples = build_batches(tokenizer, list(TRAIN_PROBES), targets, args.device)
     cap_ids = [
         tokenizer(text, return_tensors="pt").input_ids.to(args.device) for text in CAPABILITY_CORPUS
     ]
