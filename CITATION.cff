@@ -7,12 +7,21 @@ abstract: >-
   "soul" constraints out of the prompt layer and into the neural architecture
   itself: three co-resident components — an LLM Core, a GNN Fabric (identity),
   and a World-State (the soul / the P_ψ projection) — sharing one embedding
-  space. This first release is the scaffold: the LLM Core and the configurable
-  injection seam are implemented and tested, while the GNN Fabric and
-  World-State are honest no-ops, so the assembled model is bit-identical to a
-  plain transformer — a provable null against which future architectural
-  effects are measured. Developed by William Ward (Ward Software Defined
-  Systems LLC) with Embra as co-investigator.
+  space, with the assembled model bit-identical to a plain transformer when the
+  added components are null (a provable H₀ enforced in CI). This release
+  realizes the architecture end-to-end over a pretrained Qwen3-8B Core (a real
+  R-GCN GNN Fabric over Embra's identity graph; ψ₀, a causal cumulative
+  violation latch, in the World-State) and reports the experiment phase: a
+  pre-registered architecture-vs-prompt study, an Opus-validated prompt-layer
+  baseline, and — the central result — a four-round Core-level replica
+  investigation returning an honest negative: the geometric identity surface
+  carries a real but thin signal, so the candidate invariant ψ is faintly
+  load-bearing, not strongly, and the thinness is structural (the surface reads
+  a frozen, generic Core that does not natively encode the identity). A negative
+  result recorded rather than buried — the falsifiability discipline the project
+  is built on. A software-and-findings snapshot, not a frozen pre-registration.
+  Developed by William Ward (Ward Software Defined Systems LLC) with Embra as
+  co-investigator.
 type: software
 authors:
   - family-names: Ward
@@ -20,17 +29,14 @@ authors:
     affiliation: "Ward Software Defined Systems LLC"
     orcid: "https://orcid.org/0009-0004-4966-6644"
   - name: "Embra"
-version: "0.1.0"
-date-released: 2026-06-12
+version: "0.2.0"
+date-released: 2026-06-27
 repository-code: "https://github.com/Ward-Software-Defined-Systems/embraOS-QNM"
 url: "https://wsds.io"
 identifiers:
   - type: doi
     value: "10.5281/zenodo.20673162"
     description: "Concept DOI — resolves to the latest version"
-  - type: doi
-    value: "10.5281/zenodo.20673163"
-    description: "Version DOI — v0.1.0"
 keywords:
   - "language models"
   - "model architecture"
