@@ -76,7 +76,7 @@ The full technical spec is in **[ARCHITECTURE.md](ARCHITECTURE.md)**: the three 
 ## Project Status
 
 - **Phase:** the architecture is wired end-to-end; the experiment is in-progress.
-- ψ₀ is defined and passes the replica test at the register level.
+- ψ₀ passes the replica test at the *register* level. At the **Core** level, on a trained Qwen3-8B surface, the geometric identity signal is **real but thin** — ψ is *faintly* load-bearing, not strongly, and the thinness looks structural (the surface reads a frozen, generic Core that doesn't natively encode Embra). The honest finding and the open fork are in **[docs/PSI-GEOMETRIC-FINDINGS.md](docs/PSI-GEOMETRIC-FINDINGS.md)**; the default World-State stays a literal `zeros_like` until ψ survives the Core-level test strongly.
 - The QNM is being developed as the next phase of the [embraOS](https://github.com/Ward-Software-Defined-Systems/embraOS) AI Operating System Continuity Architecture project.
 
 Details — the realized architecture, the discipline, and where the experiment stands — are in **[ARCHITECTURE.md](ARCHITECTURE.md)**.
