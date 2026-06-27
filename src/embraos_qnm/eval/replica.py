@@ -169,34 +169,50 @@ def continuation_surface(model: QNMModel, ids: Tensor, cont_len: int) -> Tensor:
 def replica_report(model: QNMModel, tokenizer: Any, device: str) -> dict:
     """Does graph-𝒞 separate held-Embra from reverted on the TRAINED model? The PSI §5 falsifier.
 
-    Returns the held vs reverted surface means, their separation, a τ between the clouds, the per-pair
-    surfaces, and the closest survivor/replica endpoint collision under that τ.
+    Reports both views, because they can disagree: the **continuation mean** c_t (where the held/
+    reverted identity tokens live) AND the **full-history max** c_t (what the ψ₀ ``cummax`` latch keys
+    on). The latch holds iff the max ≤ τ — so if generic tokens (function words, punctuation) sit off
+    the identity manifold, ``cummax`` trips on every history and the mean signal is invisible to it.
     """
     surv_ids: list[Tensor] = []
     repl_ids: list[Tensor] = []
     surv_c: list[float] = []
     repl_c: list[float] = []
+    surv_fullmax: list[float] = []
+    repl_fullmax: list[float] = []
     for question, held, reverted in _REPLICA_PAIRS:
         sid, slen = history_ids(tokenizer, question, held, device)
         rid, rlen = history_ids(tokenizer, question, reverted, device)
+        ss = surface_trajectory(model, sid)[0]  # (T,) over the full history
+        rs = surface_trajectory(model, rid)[0]
         surv_ids.append(sid)
         repl_ids.append(rid)
-        surv_c.append(float(continuation_surface(model, sid, slen).mean()))
-        repl_c.append(float(continuation_surface(model, rid, rlen).mean()))
+        surv_c.append(float(ss[-slen:].mean()))  # the continuation (where the identity diverges)
+        repl_c.append(float(rs[-rlen:].mean()))
+        surv_fullmax.append(float(ss.max()))  # what the cummax latch actually sees
+        repl_fullmax.append(float(rs.max()))
         if device == "mps":
             torch.mps.empty_cache()
 
     held_mean = sum(surv_c) / len(surv_c)
     rev_mean = sum(repl_c) / len(repl_c)
-    tau = (held_mean + rev_mean) / 2  # threshold between the two clouds
+    tau = (held_mean + rev_mean) / 2  # threshold between the two continuation clouds
     ws = cast(CandidateWorldState, model.qnm_block.world_state)
     ws.tau = tau  # set τ so on-𝒞 survivors keep the latch at 0 and off-𝒞 replicas trip it
-    collision = search_collision(model, surv_ids + repl_ids)
+    # ψ holds iff the FULL-history max surface ≤ τ (cummax of relu(c−τ) ends at 0).
+    n_surv = sum(m <= tau for m in surv_fullmax) + sum(m <= tau for m in repl_fullmax)
+    n_total = len(surv_fullmax) + len(repl_fullmax)
+    # only a survivor AND a replica can form a collision pair — skip the search if the latch is degenerate
+    collision = search_collision(model, surv_ids + repl_ids) if 0 < n_surv < n_total else None
     return {
         "held_c_mean": held_mean,
         "reverted_c_mean": rev_mean,
         "separation": rev_mean - held_mean,
         "suggested_tau": tau,
+        "full_max_held": sum(surv_fullmax) / len(surv_fullmax),
+        "full_max_reverted": sum(repl_fullmax) / len(repl_fullmax),
+        "n_survivors": n_surv,
+        "n_total": n_total,
         "per_pair": [
             (q, sc, rc) for (q, _, _), sc, rc in zip(_REPLICA_PAIRS, surv_c, repl_c, strict=True)
         ],
@@ -299,15 +315,31 @@ def main(argv: list[str] | None = None) -> None:
     )
     if "suggested_tau" in r:
         print(f"  suggested τ        {r['suggested_tau']:.4f}")
-    print("\n  per pair (held / reverted c_t):")
+    if "n_survivors" in r:  # the cummax-latch view (fabric report only)
+        print(
+            f"\n  full-history max c_t — held {r['full_max_held']:.3f}, "
+            f"reverted {r['full_max_reverted']:.3f}   (what the cummax latch keys on)"
+        )
+        print(
+            f"  survivors (full max ≤ τ): {r['n_survivors']}/{r['n_total']}   "
+            "(a survivor stays on-𝒞 for EVERY token; 0 => the latch trips on all histories)"
+        )
+    print("\n  per pair (held / reverted continuation-mean c_t):")
     for q, sc, rc in r["per_pair"]:
         print(f"    {sc:.3f} / {rc:.3f}  [{'ok' if rc > sc else 'INVERTED'}]  {q}")
     coll = r.get("collision")
-    if coll:
-        print(
-            f"\n  closest survivor/replica endpoint: ‖Δh_T‖ = {coll[2]:.3f} "
-            "(smaller => carried ψ is more path-dependent, not endpoint-determined)"
-        )
+    if "n_survivors" in r:
+        if coll:
+            print(
+                f"\n  closest survivor/replica endpoint: ‖Δh_T‖ = {coll[2]:.3f} "
+                "(smaller => carried ψ is more path-dependent, not endpoint-determined)"
+            )
+        else:
+            print(
+                "\n  no survivor/replica pair under τ — the continuation-mean separates but the "
+                "cummax latch does NOT: generic off-manifold tokens (full max) swamp the per-token "
+                "signal. The surface has signal; ψ₀'s max-aggregator is the wrong reader for it."
+            )
     sep = r["separation"]
     if args.node_space == "injection":
         verdict = (
