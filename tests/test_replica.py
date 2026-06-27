@@ -94,3 +94,54 @@ def test_enforce_fires_only_after_the_latch_trips() -> None:
     assert torch.equal(norms[:2], torch.zeros(2)), "no correction while on 𝒞 (t < 2)"
     assert (norms[2:] > 0).all(), "correction fires once off 𝒞 (t >= 2, monotone latch)"
     assert not bool(ws.psi_holds(psi_next)), "carried ψ records the violation for the next step"
+
+
+def test_direction_readers_separate_drift_from_hold() -> None:
+    """Fork-3 direction scout (register level): the drift + surface-velocity readers must score a
+    DRIFTING/reverting trajectory above a HELD/correcting one — reverted > held on every reader, in
+    the predicted direction. Synthetic h/c, no model: the analog of the c-level latch tests above,
+    proving the readers' *logic* is falsifiable before they run on the 8B (PSI-ANALYSIS-EMBRA §3)."""
+    from embraos_qnm.eval.replica import _direction_readers
+
+    # held: h barely moves (near-collinear steps), and c corrects toward 𝒞 (Δc < 0 every step).
+    h_held = torch.tensor(
+        [
+            [1.0, 0.00, 0.0, 0.0],
+            [1.0, 0.02, 0.0, 0.0],
+            [1.0, 0.04, 0.0, 0.0],
+            [1.0, 0.05, 0.0, 0.0],
+            [1.0, 0.06, 0.0, 0.0],
+        ]
+    )
+    c_held = torch.tensor([0.50, 0.45, 0.42, 0.40, 0.39])  # decreasing: correcting toward 𝒞
+    # reverted: h hops between near-orthogonal directions, and c climbs OFF 𝒞 (Δc > 0 every step).
+    h_drift = torch.tensor(
+        [
+            [1.0, 0.0, 0.0, 0.0],
+            [0.0, 1.0, 0.0, 0.0],
+            [0.0, 0.0, 1.0, 0.0],
+            [0.0, 0.0, 0.0, 1.0],
+            [1.0, 0.0, 0.0, 0.0],
+        ]
+    )
+    c_drift = torch.tensor([0.40, 0.50, 0.60, 0.65, 0.70])  # increasing: climbing off 𝒞
+
+    held = _direction_readers(h_held, c_held)
+    drift = _direction_readers(h_drift, c_drift)
+
+    # every reader is framed so reverted (drift) must exceed held — the falsifiable contract:
+    for reader in (
+        "drift_mean",
+        "drift_max",
+        "vel_mean",
+        "vel_climb_frac",
+        "loc_climb_frac",
+        "loc_vel_mean",
+    ):
+        assert drift[reader] > held[reader], f"{reader}: reverted must exceed held"
+    # the velocity readers key on the SIGN: held corrects (< 0), reverted climbs (> 0):
+    assert held["vel_mean"] < 0.0 < drift["vel_mean"]
+    assert held["vel_climb_frac"] == 0.0 and drift["vel_climb_frac"] == 1.0
+    # localized to OFF-COURSE steps: held still corrects where it strayed, reverted keeps climbing:
+    assert held["loc_vel_mean"] < 0.0 < drift["loc_vel_mean"]
+    assert held["loc_climb_frac"] == 0.0 and drift["loc_climb_frac"] == 1.0

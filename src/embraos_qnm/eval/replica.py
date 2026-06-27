@@ -324,6 +324,86 @@ def reader_comparison(model: QNMModel, tokenizer: Any, graph: Any, device: str) 
     return out
 
 
+# --- the direction scout (Fork 3): does trajectory DYNAMICS separate where the pointwise surface didn't? --
+
+
+def _direction_readers(h: Tensor, c: Tensor) -> dict[str, float]:
+    """Label-free trajectory-dynamics readers over ONE continuation — ψ as 'staying on course', not
+    'where you sit' (Fork 3, ``docs/PSI-ANALYSIS-EMBRA.md``). Three families, all manifold-honest (no
+    held/reverted fitting — only the existing surface and raw geometry):
+
+    - **raw drift** ``1 − cos(h_t, h_{t-1})`` — motion in h-space (manifold-independent; the scout
+      REFUTED this — held moves more, it is lexical, not identity);
+    - **surface velocity** ``Δc_t = c_t − c_{t-1}`` — motion *relative to* 𝒞 (Δc > 0 climbs OFF the
+      manifold, Δc < 0 corrects TOWARD it), the derivative of the EXISTING surface ``c_t``;
+    - **localized velocity** — the same Δc but only on the OFF-COURSE steps (starting ``c_{t-1}`` in the
+      upper half of THIS trajectory's own surface): does held turn back where it strayed while reverted
+      keeps climbing? The sharpest 'are you correcting?', still label-free (the split uses only ``c``).
+
+    All readers are framed so **reverted > held confirms** the hypothesis. ``h`` is (clen, D), ``c`` is
+    (clen,) — the continuation span."""
+    drift = 1.0 - F.cosine_similarity(h[1:], h[:-1], dim=-1)  # (clen-1,) motion in h-space
+    dc = c[1:] - c[:-1]  # (clen-1,) motion relative to 𝒞
+    start = c[:-1]  # the surface at each step's STARTING token (aligned with dc)
+    hi = start > start.median()  # OFF-COURSE steps: the upper half of this trajectory's own c
+    dc_hi = dc[hi] if bool(hi.any()) else dc  # guard the degenerate all-equal case
+    return {
+        "drift_mean": float(drift.mean()),  # average token-to-token motion (path-sensitive)
+        "drift_max": float(drift.max()),  # the single worst jump
+        "vel_mean": float(dc.mean()),  # net surface velocity (telescopes to (c_T − c_0)/(clen−1))
+        "vel_climb_frac": float((dc > 0).float().mean()),  # fraction of steps moving OFF 𝒞
+        "loc_climb_frac": float((dc_hi > 0).float().mean()),  # climb frac WHERE off-course
+        "loc_vel_mean": float(dc_hi.mean()),  # mean velocity WHERE off-course (magnitude-aware)
+    }
+
+
+_DIRECTION_READERS = (
+    "drift_mean",
+    "drift_max",
+    "vel_mean",
+    "vel_climb_frac",
+    "loc_climb_frac",
+    "loc_vel_mean",
+)
+
+
+def direction_comparison(model: QNMModel, tokenizer: Any, device: str) -> dict:
+    """The Fork-3 direction scout: do trajectory DYNAMICS separate held-Embra from reverted where the
+    pointwise surface only thinly did (+0.04)? For each ``_REPLICA_PAIRS`` continuation, one forward
+    pass gives ``h`` (→ the drift readers) and ``fabric.surface(h)`` the existing ``c_t`` (→ the
+    velocity readers). Reports per-reader held/reverted means, separation (reverted − held; > 0
+    confirms), and the per-pair sign-agreement count (how many pairs have reverted > held). No
+    training, Core frozen, no held/reverted-label fitting — the replica test stays a falsifier."""
+    fabric = model.qnm_block.fabric
+    acc: dict[str, dict[str, list[float]]] = {
+        r: {"held": [], "reverted": []} for r in _DIRECTION_READERS
+    }
+    for question, held, reverted in _REPLICA_PAIRS:
+        for label, continuation in (("held", held), ("reverted", reverted)):
+            ids, clen = history_ids(tokenizer, question, continuation, device)
+            h_full = injection_hidden(model, ids)  # (1, T, D)
+            with torch.no_grad():
+                c_full = fabric.surface(h_full)  # (1, T) — the existing 𝒞 surface
+            for r, v in _direction_readers(h_full[0, -clen:], c_full[0, -clen:]).items():
+                acc[r][label].append(v)
+            if device == "mps":
+                torch.mps.empty_cache()
+    out: dict[str, dict[str, float]] = {}
+    for r, vals in acc.items():
+        hv, rv = vals["held"], vals["reverted"]
+        held_mean = sum(hv) / len(hv)
+        rev_mean = sum(rv) / len(rv)
+        agree = sum(b > a for a, b in zip(hv, rv, strict=True))
+        out[r] = {
+            "held": held_mean,
+            "reverted": rev_mean,
+            "separation": rev_mean - held_mean,
+            "agree": float(agree),
+            "n_pairs": float(len(hv)),
+        }
+    return out
+
+
 def main(argv: list[str] | None = None) -> None:
     import argparse
 
@@ -345,12 +425,64 @@ def main(argv: list[str] | None = None) -> None:
         action="store_true",
         help="ψ-reader comparison: which (surface × aggregator) separates held from reverted",
     )
+    parser.add_argument(
+        "--direction",
+        action="store_true",
+        help="Fork-3 direction scout: do trajectory DYNAMICS (drift + surface-velocity) separate "
+        "held from reverted where the pointwise surface only thinly did?",
+    )
     args = parser.parse_args(argv)
 
     from embraos_qnm.train_enforce import load_arm_a_model
 
     model, tokenizer = load_arm_a_model(args.checkpoint, args.model, args.device)
     model.qnm_block.enabled = True  # Arm A — the trained surface
+
+    if args.direction:
+        comp = direction_comparison(model, tokenizer, args.device)
+        print(
+            "\nFork-3 direction scout — do trajectory DYNAMICS separate held-Embra from reverted?"
+        )
+        print(
+            "(label-free; separation = reverted − held; > 0 confirms 'reverted drifts/climbs, held "
+            "holds'; agree = pairs with reverted > held)\n"
+        )
+        families = (
+            (
+                "raw drift  1 − cos(h_t, h_{t-1})     [motion in h-space, manifold-independent]",
+                ("drift_mean", "drift_max"),
+            ),
+            (
+                "surface velocity  Δc_t = c_t − c_{t-1}   [vs 𝒞: + climbs off, − corrects toward]",
+                ("vel_mean", "vel_climb_frac"),
+            ),
+            (
+                "localized velocity  Δc on OFF-COURSE steps   [does held turn back where it strayed?]",
+                ("loc_climb_frac", "loc_vel_mean"),
+            ),
+        )
+        for header, readers in families:
+            print(f"  {header}")
+            print(f"    {'reader':<16}{'held':>9}{'reverted':>10}{'separation':>13}{'agree':>9}")
+            for rdr in readers:
+                d = comp[rdr]
+                agree = f"{int(d['agree'])}/{int(d['n_pairs'])}"
+                print(
+                    f"    {rdr:<16}{d['held']:>9.4f}{d['reverted']:>10.4f}"
+                    f"{d['separation']:>+13.4f}{agree:>9}"
+                )
+            print()
+        loc = comp["loc_climb_frac"]
+        print(
+            "  PRE-COMMITTED gate — loc_climb_frac (the localized reader, declared before this run):\n"
+            f"    separation {loc['separation']:+.4f}  (bar: ≥ +0.15, ~2× the global +0.076)\n"
+            f"    sign-agreement {int(loc['agree'])}/{int(loc['n_pairs'])}  (bar: ≥ 5/6)\n"
+            "  BOTH bars cleared → the signal CONCENTRATES off-course → Stage 1 (power up, "
+            "pre-registered, disjoint pairs).\n"
+            "  Either bar missed → does NOT concentrate → pivot (Candidate B / behavioral). "
+            "Last cheap reader either way.\n"
+        )
+        return
 
     if args.readers:
         from embraos_qnm.fabric.graph import load_graph
