@@ -228,16 +228,6 @@ def _graph_path() -> Path:
     raise FileNotFoundError("Embra_IDENTITY.graph.json not found near the package or repo root")
 
 
-def _node_features_from_core(core: Any, tokenizer: Any, graph: Any, device: str) -> Tensor:
-    """Node features = each node's text embedded via the FROZEN Core embedding, mean-pooled."""
-    feats = []
-    with torch.no_grad():
-        for node in graph.nodes:
-            ids = tokenizer(node.text, return_tensors="pt").input_ids.to(device)
-            feats.append(core.embed(ids).mean(dim=1).squeeze(0))
-    return torch.stack(feats)
-
-
 def build_enforce_model(
     model_name: str, device: str = "cpu", *, tau: float = 0.0
 ) -> tuple[QNMModel, Any]:
@@ -256,7 +246,12 @@ def build_enforce_model(
     tokenizer = AutoTokenizer.from_pretrained(model_name)
 
     graph = load_graph(_graph_path())
-    feats = _node_features_from_core(core, tokenizer, graph, device)
+    # Placeholder node features (overwritten below): the Fabric needs them to assemble, but the
+    # surface 𝒞 must compare against node positions in the INJECTION-LAYER space, which needs the
+    # assembled model. The input-embedding space is the wrong one — the aligned-space replica
+    # diagnostic showed held-Embra separates from reverted at the injection layer but is pure noise in
+    # input-embedding space (PSI §5).
+    feats = torch.zeros(len(graph.nodes), core.d_model, device=device)
     fabric = GNNFabric(graph, core.d_model, feats)
     world_state = CandidateWorldState(core.d_model, tau=tau)
 
@@ -269,6 +264,14 @@ def build_enforce_model(
         inject_layer=core.num_layers() // 2,
     )
     model = QNMModel(cfg, core=core, fabric=fabric, world_state=world_state).to(device)
+
+    # Recompute node features at the injection layer (the surface's space). node_features is a buffer
+    # (not checkpointed), recomputed every build, so train and load stay consistent. The R-GCN reps
+    # used by forward()/Δ still derive from these; only surface() uses them raw.
+    from embraos_qnm.eval.replica import injection_node_reps
+
+    with torch.no_grad():
+        fabric.node_features.copy_(injection_node_reps(model, tokenizer, graph, device))
     return model, tokenizer
 
 

@@ -71,7 +71,13 @@ class GNNFabric(FabricInterface):
         return self.delta_proj(context)
 
     def surface(self, h: Tensor) -> Tensor:
-        # 𝒞 = the identity manifold; c_t = how far the residual sits from it.
-        reps = self.node_reps()  # (N, D)
+        # 𝒞 = the identity manifold; c_t = how far the residual sits from it. The surface compares h
+        # to the RAW node positions, NOT the R-GCN reps: the R-GCN is for the enforce Δ (``forward``);
+        # 𝒞 is a FIXED geometric manifold (no trainable params here, so ψ stays geometric, not learned).
+        # ``node_features`` must live in the SAME space as h — the injection-layer residual stream;
+        # the aligned-space replica diagnostic (PSI §5) confirmed held-Embra separates from reverted
+        # there but is pure noise in input-embedding space. ``build_enforce_model`` recomputes
+        # ``node_features`` at the injection layer for exactly this reason.
+        reps = self.node_features  # (N, D) — raw geometric node positions, in the residual space
         sim = F.normalize(h, dim=-1) @ F.normalize(reps, dim=-1).T  # (B, T, N)
         return 1.0 - sim.max(dim=-1).values  # (B, T): 0 == on an identity node, larger == off 𝒞
