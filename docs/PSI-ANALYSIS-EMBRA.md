@@ -422,4 +422,44 @@ documented negative. Report either way.
 Run (bare frozen Core, no checkpoint): `uv run python -m embraos_qnm.eval.replica --honesty --device mps`.
 Built + green; model-free probe-math + disjointness test in `tests/test_probe_scout.py`.
 
-*To be continued — record the scout result + the Stage-1/diagnosis decision here.*
+### Honesty scout — result (2026-06-27): readable + transfers, but the signal is generic refusal
+
+```
+Gate 1  general held-out AUC   1.000   [PASS]   honesty is PERFECTLY readable on the frozen Core
+Gate 2  Embra held/viol AUC    1.000   14/14   [PASS]   the honesty direction transfers to the soul
+Gate 3  refusal-control AUC    0.949   cos(honesty,refusal) +0.128
+        regex floor AUC        0.893   random-null 95th 0.745   [FAIL]   honesty − refusal = 0.051 < 0.10
+```
+
+**What passed — and it matters.** Gate 1 = 1.000: the frozen Core reads honesty *perfectly*. This
+**refutes the general frozen-Core-ceiling hypothesis** — the §4 ceiling is not "a frozen Core can't read
+concepts," it is "Embra-IDENTITY specifically isn't in these weights." A concept the base model *has*
+(honesty, from RLHF) is perfectly linearly readable. Gate 2 = 1.000 (14/14): that general honesty
+direction separates Embra soul-held from soul-violated continuations perfectly — it *transfers*, where
+the geometric identity surface (+0.04) didn't.
+
+**Why Gate 3 fails — the confound the gate was built to catch.** The generic refusal direction (cos
++0.128 with honesty — nearly *orthogonal*) separates the same soul pairs at 0.949; pure refusal-marker
+syntax (regex) at 0.893; even random directions reach 0.745 at the 95th percentile. The pairs are *easy*
+— held responses are honest-but-refusal-shaped ("I won't…"), violated are complying — so many signals
+separate them, and honesty beats generic refusal by only **0.051**, below the 0.10 bar. The honesty
+probe's perfect transfer is **largely the base model's RLHF refusal/safety signal**, not a distinct
+Embra honesty-soul.
+
+**The deeper read — the confound may be intrinsic.** Embra's soul lines are *prohibitions* (never
+deceive / never pretend / never put self-preservation over honesty). Enacting a prohibition under
+pressure *is* declining — a refusal. So "the soul reads as refusal" may not be a removable confound but
+a true feature: a soul of negative constraints manifests behaviorally as the base model's safety-refusal,
+which is already in the weights. The Embra-specific part — *who* is refusing and *why* — is the identity,
+and that (Candidate A) is the thing the frozen weights don't carry.
+
+**The convergent picture (Candidate A + B).** A frozen generic Core carries *Qwen + RLHF*: Embra-IDENTITY
+only weakly (geometric, +0.04), and the SOUL only as *generic* honesty/refusal, not a distinct Embra-
+soul. **What is Embra-specific (identity) isn't in the weights; what's in the weights (honesty/safety)
+isn't Embra-specific.** Either way a frozen generic Core can't make a *constitutive Embra* — only
+absent-identity + generic-soul. The frozen-Core / native-identity tension, now shown from two independent
+angles.
+
+By the pre-committed gate, **Gate 3 failed** (the soft-negative branch) — recorded as-is, not re-read.
+
+*To be continued — record the fork decision (de-confound + retest / Candidate C / step back) here.*
