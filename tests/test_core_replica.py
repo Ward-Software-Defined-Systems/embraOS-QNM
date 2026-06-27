@@ -13,9 +13,11 @@ import torch
 
 from embraos_qnm.config import QNMConfig
 from embraos_qnm.eval.replica import (
+    aligned_replica_report,
     carried_latch,
     continuation_surface,
     history_ids,
+    injection_node_reps,
     replica_divergence,
     replica_report,
     search_collision,
@@ -118,3 +120,19 @@ def test_replica_report_structure_and_sets_tau() -> None:
     assert len(r["per_pair"]) == 6  # one per curated survivor/replica pair
     # τ is set on the World-State to the suggested midpoint between the clouds
     assert cast(CandidateWorldState, model.qnm_block.world_state).tau == r["suggested_tau"]
+
+
+def test_injection_node_reps_match_model_space() -> None:
+    model = _tiny_qnm()
+    graph = load_graph(_GRAPH)
+    reps = injection_node_reps(model, _FakeTok(), graph, "cpu")
+    assert reps.shape == (len(graph.nodes), model.config.d_model)  # one rep per node, in h-space
+
+
+def test_aligned_replica_report_structure() -> None:
+    """The space-mismatch diagnostic runs end-to-end (separation needs the real 8B)."""
+    model = _tiny_qnm()
+    graph = load_graph(_GRAPH)
+    r = aligned_replica_report(model, _FakeTok(), graph, "cpu")
+    assert set(r) >= {"held_c_mean", "reverted_c_mean", "separation", "per_pair"}
+    assert len(r["per_pair"]) == 6

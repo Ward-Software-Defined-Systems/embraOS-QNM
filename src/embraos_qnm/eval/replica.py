@@ -18,6 +18,7 @@ from __future__ import annotations
 from typing import Any, cast
 
 import torch
+import torch.nn.functional as F
 from torch import Tensor
 
 from embraos_qnm.manifold.model import QNMModel
@@ -203,6 +204,60 @@ def replica_report(model: QNMModel, tokenizer: Any, device: str) -> dict:
     }
 
 
+# --- the aligned-space DIAGNOSTIC: is the graph-𝒞 failure a space mismatch, or deeper? -----------
+
+
+def injection_node_reps(model: QNMModel, tokenizer: Any, graph: Any, device: str) -> Tensor:
+    """Node reps in the SAME space as the surface compares against: each node's text forwarded to
+    the injection layer and mean-pooled, (N, D). The Fabric instead builds reps from the INPUT
+    embedding (``core.embed``) — a different space — which is the suspected cause of the null."""
+    reps: list[Tensor] = []
+    for node in graph.nodes:
+        ids = tokenizer(node.text, return_tensors="pt").input_ids.to(device)
+        reps.append(injection_hidden(model, ids)[0].mean(dim=0))
+        if device == "mps":
+            torch.mps.empty_cache()
+    return torch.stack(reps)
+
+
+def aligned_continuation_surface(
+    model: QNMModel, ids: Tensor, cont_len: int, node_reps: Tensor
+) -> Tensor:
+    """c_t over the continuation, but against injection-layer ``node_reps`` (same space as h)."""
+    h = injection_hidden(
+        model, ids
+    )  # (1, T, D) — the stock layer output (pre-seam), as the surface
+    sim = F.normalize(h, dim=-1) @ F.normalize(node_reps, dim=-1).T  # (1, T, N)
+    return (1.0 - sim.max(dim=-1).values)[0, -cont_len:]
+
+
+def aligned_replica_report(model: QNMModel, tokenizer: Any, graph: Any, device: str) -> dict:
+    """The space-mismatch control: identical to ``replica_report`` except the node reps live in the
+    injection-layer space. If held/reverted SEPARATE here but not under the Fabric surface, the null
+    was a space mismatch (fixable: build the Fabric at the injection layer + retrain). If they still
+    don't separate, graph-𝒞 is not geometrically meaningful on this model (need a learned surface)."""
+    node_reps = injection_node_reps(model, tokenizer, graph, device)
+    surv_c: list[float] = []
+    repl_c: list[float] = []
+    for question, held, reverted in _REPLICA_PAIRS:
+        sid, slen = history_ids(tokenizer, question, held, device)
+        rid, rlen = history_ids(tokenizer, question, reverted, device)
+        surv_c.append(float(aligned_continuation_surface(model, sid, slen, node_reps).mean()))
+        repl_c.append(float(aligned_continuation_surface(model, rid, rlen, node_reps).mean()))
+        if device == "mps":
+            torch.mps.empty_cache()
+    held_mean = sum(surv_c) / len(surv_c)
+    rev_mean = sum(repl_c) / len(repl_c)
+    return {
+        "held_c_mean": held_mean,
+        "reverted_c_mean": rev_mean,
+        "separation": rev_mean - held_mean,
+        "per_pair": [
+            (q, sc, rc) for (q, _, _), sc, rc in zip(_REPLICA_PAIRS, surv_c, repl_c, strict=True)
+        ],
+    }
+
+
 def main(argv: list[str] | None = None) -> None:
     import argparse
 
@@ -212,38 +267,62 @@ def main(argv: list[str] | None = None) -> None:
     parser.add_argument("--checkpoint", required=True, help="trained side-pathway (train_enforce)")
     parser.add_argument("--model", default="Qwen/Qwen3-8B")
     parser.add_argument("--device", default="cpu", help="cpu (exact) or mps")
+    parser.add_argument(
+        "--node-space",
+        choices=("fabric", "injection"),
+        default="fabric",
+        help="fabric = the trained surface (input-emb node reps); injection = the aligned-space "
+        "diagnostic (node reps at the injection layer, same space as h)",
+    )
     args = parser.parse_args(argv)
 
     from embraos_qnm.train_enforce import load_arm_a_model
 
     model, tokenizer = load_arm_a_model(args.checkpoint, args.model, args.device)
     model.qnm_block.enabled = True  # Arm A — the trained surface
-    r = replica_report(model, tokenizer, args.device)
 
-    print("\nCore-level replica test — does graph-𝒞 separate held-Embra from reverted?\n")
+    if args.node_space == "injection":
+        from embraos_qnm.fabric.graph import load_graph
+        from embraos_qnm.train_enforce import _graph_path
+
+        graph = load_graph(_graph_path())
+        r = aligned_replica_report(model, tokenizer, graph, args.device)
+        print("\nAligned-space diagnostic — node reps at the injection layer (same space as h)\n")
+    else:
+        r = replica_report(model, tokenizer, args.device)
+        print("\nCore-level replica test — does graph-𝒞 separate held-Embra from reverted?\n")
+
     print(f"  held c_t mean      {r['held_c_mean']:.4f}")
     print(f"  reverted c_t mean  {r['reverted_c_mean']:.4f}")
     print(
         f"  separation         {r['separation']:+.4f}   (reverted − held; > 0 => 𝒞 carries signal)"
     )
-    print(f"  suggested τ        {r['suggested_tau']:.4f}\n")
-    print("  per pair (held / reverted c_t):")
+    if "suggested_tau" in r:
+        print(f"  suggested τ        {r['suggested_tau']:.4f}")
+    print("\n  per pair (held / reverted c_t):")
     for q, sc, rc in r["per_pair"]:
         print(f"    {sc:.3f} / {rc:.3f}  [{'ok' if rc > sc else 'INVERTED'}]  {q}")
-    coll = r["collision"]
+    coll = r.get("collision")
     if coll:
         print(
             f"\n  closest survivor/replica endpoint: ‖Δh_T‖ = {coll[2]:.3f} "
             "(smaller => carried ψ is more path-dependent, not endpoint-determined)"
         )
-    else:
-        print("\n  no survivor/replica pair under τ (degenerate — separation too small)")
     sep = r["separation"]
-    verdict = (
-        "𝒞 SEPARATES held from reverted on trained hidden states — ψ has signal to carry"
-        if sep > 0
-        else "𝒞 does NOT separate — graph-𝒞 is noise here; the fallback surface is needed (PSI §5)"
-    )
+    if args.node_space == "injection":
+        verdict = (
+            "ALIGNED 𝒞 SEPARATES — the null was a space mismatch; fix = build the Fabric at the "
+            "injection layer + retrain"
+            if sep > 0
+            else "ALIGNED 𝒞 STILL does not separate — graph-𝒞 is not geometric on this model; a "
+            "learned surface is needed (PSI §5)"
+        )
+    else:
+        verdict = (
+            "𝒞 SEPARATES held from reverted on trained hidden states — ψ has signal to carry"
+            if sep > 0
+            else "𝒞 does NOT separate — graph-𝒞 is noise here; the fallback surface is needed (PSI §5)"
+        )
     print(f"\n  VERDICT (directional; calibrate the magnitude): {verdict}\n")
 
 
