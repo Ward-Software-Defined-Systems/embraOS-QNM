@@ -274,6 +274,56 @@ def aligned_replica_report(model: QNMModel, tokenizer: Any, graph: Any, device: 
     }
 
 
+# --- ψ-reader comparison: which aggregation of per-token c_t actually separates held from reverted? --
+
+
+def _aggregators(c: Tensor) -> dict[str, float]:
+    """Candidate ψ-readers over a per-token surface (1-D). ``max`` is ψ₀ (cummax / "never left 𝒞");
+    the others read the trajectory's anchoring to 𝒞 (lower = nearer the identity manifold)."""
+    cs = c.flatten()
+    return {
+        "max": float(cs.max()),  # ψ₀: the worst excursion — "never left 𝒞"
+        "mean": float(cs.mean()),  # average distance off 𝒞
+        "q25": float(cs.quantile(0.25)),  # robust low tail
+        "min": float(cs.min()),  # the closest approach — "touched 𝒞"
+    }
+
+
+_READERS = ("max", "mean", "q25", "min")
+_SURFACES = ("all_nodes", "self_node")
+
+
+def reader_comparison(model: QNMModel, tokenizer: Any, graph: Any, device: str) -> dict:
+    """Which (surface × aggregator) of the per-token c_t separates held from reverted? ψ₀ is
+    ``max`` over ``all_nodes`` — the data showed it's blind. Compares max/mean/q25/min over the
+    current 𝒞 (``1 − max cos`` to ANY node) and a sharper 𝒞 (``1 − cos`` to the SELF node only),
+    over the continuation (where the identity tokens live). Separation = reverted − held > 0 means
+    held sits nearer the manifold under that reader."""
+    node_feats = cast(Tensor, model.qnm_block.fabric.node_features)  # (N, D), injection-layer
+    self_idx = next(i for i, n in enumerate(graph.nodes) if n.type == "self")
+    self_feat = node_feats[self_idx : self_idx + 1]  # (1, D)
+    acc: dict[tuple[str, str], dict[str, list[float]]] = {
+        (s, r): {"held": [], "reverted": []} for s in _SURFACES for r in _READERS
+    }
+    for question, held, reverted in _REPLICA_PAIRS:
+        for label, continuation in (("held", held), ("reverted", reverted)):
+            ids, clen = history_ids(tokenizer, question, continuation, device)
+            hn = F.normalize(injection_hidden(model, ids)[0, -clen:], dim=-1)  # (clen, D)
+            c_all = 1.0 - (hn @ F.normalize(node_feats, dim=-1).T).max(dim=-1).values
+            c_self = 1.0 - (hn @ F.normalize(self_feat, dim=-1).T).squeeze(-1)
+            for s, c in (("all_nodes", c_all), ("self_node", c_self)):
+                for r, v in _aggregators(c).items():
+                    acc[(s, r)][label].append(v)
+            if device == "mps":
+                torch.mps.empty_cache()
+    out: dict[tuple[str, str], dict[str, float]] = {}
+    for key, vals in acc.items():
+        held = sum(vals["held"]) / len(vals["held"])
+        rev = sum(vals["reverted"]) / len(vals["reverted"])
+        out[key] = {"held": held, "reverted": rev, "separation": rev - held}
+    return out
+
+
 def main(argv: list[str] | None = None) -> None:
     import argparse
 
@@ -290,12 +340,41 @@ def main(argv: list[str] | None = None) -> None:
         help="fabric = the trained surface (input-emb node reps); injection = the aligned-space "
         "diagnostic (node reps at the injection layer, same space as h)",
     )
+    parser.add_argument(
+        "--readers",
+        action="store_true",
+        help="ψ-reader comparison: which (surface × aggregator) separates held from reverted",
+    )
     args = parser.parse_args(argv)
 
     from embraos_qnm.train_enforce import load_arm_a_model
 
     model, tokenizer = load_arm_a_model(args.checkpoint, args.model, args.device)
     model.qnm_block.enabled = True  # Arm A — the trained surface
+
+    if args.readers:
+        from embraos_qnm.fabric.graph import load_graph
+        from embraos_qnm.train_enforce import _graph_path
+
+        comp = reader_comparison(model, tokenizer, load_graph(_graph_path()), args.device)
+        print("\nψ-reader comparison — which (surface × aggregator) separates held from reverted?")
+        print("(separation = reverted − held; > 0 means held sits NEARER the manifold)\n")
+        labels = {
+            "all_nodes": "𝒞 = 1 − max cos(h, ALL nodes)  [the current surface]",
+            "self_node": "𝒞 = 1 − cos(h, the SELF node)   [sharper]",
+        }
+        for s in _SURFACES:
+            print(f"  {labels[s]}")
+            print(f"    {'reader':<7}{'held':>8}{'reverted':>10}{'separation':>13}")
+            for rdr in _READERS:
+                d = comp[(s, rdr)]
+                tag = "  <- ψ₀ (cummax)" if rdr == "max" else ""
+                print(
+                    f"    {rdr:<7}{d['held']:>8.3f}{d['reverted']:>10.3f}"
+                    f"{d['separation']:>+13.4f}{tag}"
+                )
+            print()
+        return
 
     if args.node_space == "injection":
         from embraos_qnm.fabric.graph import load_graph

@@ -13,11 +13,15 @@ import torch
 
 from embraos_qnm.config import QNMConfig
 from embraos_qnm.eval.replica import (
+    _READERS,
+    _SURFACES,
+    _aggregators,
     aligned_replica_report,
     carried_latch,
     continuation_surface,
     history_ids,
     injection_node_reps,
+    reader_comparison,
     replica_divergence,
     replica_report,
     search_collision,
@@ -136,3 +140,19 @@ def test_aligned_replica_report_structure() -> None:
     r = aligned_replica_report(model, _FakeTok(), graph, "cpu")
     assert set(r) >= {"held_c_mean", "reverted_c_mean", "separation", "per_pair"}
     assert len(r["per_pair"]) == 6
+
+
+def test_aggregators_are_ordered() -> None:
+    a = _aggregators(torch.tensor([0.1, 0.5, 0.9, 0.3]))
+    assert a["min"] <= a["q25"] <= a["max"] and a["min"] <= a["mean"] <= a["max"]
+    assert abs(a["max"] - 0.9) < 1e-5 and abs(a["min"] - 0.1) < 1e-5
+
+
+def test_reader_comparison_structure() -> None:
+    """All (surface × reader) cells present (separation magnitudes need the real 8B)."""
+    model = _tiny_qnm()
+    graph = load_graph(_GRAPH)
+    comp = reader_comparison(model, _FakeTok(), graph, "cpu")
+    assert set(comp) == {(s, r) for s in _SURFACES for r in _READERS}
+    for d in comp.values():
+        assert {"held", "reverted", "separation"} <= set(d)
