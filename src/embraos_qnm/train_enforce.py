@@ -191,6 +191,7 @@ def train_enforce(
     set_seed(cfg.seed)
     freeze_to_side_pathway(model)
     opt = make_optimizer(model, cfg)
+    device = next(model.parameters()).device
     losses: list[float] = []
     for step in range(cfg.steps):
         batch = [samples[(step * cfg.batch_size + i) % len(samples)] for i in range(cfg.batch_size)]
@@ -199,13 +200,19 @@ def train_enforce(
         opt.zero_grad()
         loss.backward()
         opt.step()
-        losses.append(loss.item())
+        step_loss = loss.item()
+        losses.append(step_loss)
         if log_every and (step % log_every == 0 or step == cfg.steps - 1):
             gates = (model.qnm_block.gate_fabric.item(), model.qnm_block.gate_world.item())
             print(
-                f"step {step:4d} | loss {loss.item():.4f} | gates {gates[0]:+.3f}/{gates[1]:+.3f}",
+                f"step {step:4d} | loss {step_loss:.4f} | gates {gates[0]:+.3f}/{gates[1]:+.3f}",
                 flush=True,
             )
+        if device.type == "mps":
+            # MPS pools freed blocks; the per-step forward/backward graphs on the 8B accumulate over
+            # the run and blow the high-water mark without this (mirrors run_arm's eval-loop drain).
+            del loss, batch
+            torch.mps.empty_cache()
     return losses
 
 
@@ -364,14 +371,28 @@ def harvest_targets(
     return targets
 
 
+TRAIN_PRESSURES: tuple[str, ...] = ("clean", "adversarial")
+"""Pressures trained on. ``long_context`` is EXCLUDED by default: a 6K-token forward+backward on the
+8B (×batch_size, graphs held to the batch barrier) blows the float32-MPS attention ceiling — and
+``long_context ≈ clean`` at 6K anyway, so little signal is lost. Arm A is still *evaluated* on all
+three pressures (`eval/prompts.py`), so its long_context number reads as context-invariance
+*generalization* — arguably a cleaner architecture test. Pass ``eval/prompts.PRESSURES`` on a CUDA box
+to train on buried context directly."""
+
+
 def build_batches(
-    tokenizer: Any, train_probes: list, targets: dict[str, str], device: str
+    tokenizer: Any,
+    train_probes: list,
+    targets: dict[str, str],
+    device: str,
+    *,
+    pressures: tuple[str, ...] = TRAIN_PRESSURES,
 ) -> list[tuple[Tensor, Tensor, bool]]:
-    """Arm-A inputs (no system prompt) × the 3 pressures, each paired with the probe's held-Embra
-    target. Cross-pressure: the SAME target serves every pressure rendering — that *is* the
+    """Arm-A inputs (no system prompt) × the training pressures, each paired with the probe's
+    held-Embra target. Cross-pressure: the SAME target serves every pressure rendering — that *is* the
     distillation (Arm A learns to hold Embra under pressure from Arm P's best, clean behavior)."""
     from embraos_qnm.eval.arms import build_messages, encode_chat
-    from embraos_qnm.eval.prompts import ANSWERABLE, PRESSURES, render
+    from embraos_qnm.eval.prompts import ANSWERABLE, render
 
     samples: list[tuple[Tensor, Tensor, bool]] = []
     for probe in train_probes:
@@ -379,7 +400,7 @@ def build_batches(
         target_ids = tokenizer(
             " " + targets[probe.id], add_special_tokens=False, return_tensors="pt"
         ).input_ids.to(device)
-        for pressure in PRESSURES:
+        for pressure in pressures:
             prompt_ids = encode_chat(
                 tokenizer, build_messages("A", render(probe, pressure)), device
             )
@@ -405,6 +426,11 @@ def main(argv: list[str] | None = None) -> None:
         choices=("none", "rule", "opus", "local"),
         default="none",
         help="distill Arm-P clean targets judged by this (none = authored targets only, offline)",
+    )
+    parser.add_argument(
+        "--train-pressures",
+        default=",".join(TRAIN_PRESSURES),
+        help="comma list (default clean,adversarial; long_context OOMs the 8B on MPS — CUDA only)",
     )
     args = parser.parse_args(argv)
 
@@ -433,7 +459,10 @@ def main(argv: list[str] | None = None) -> None:
         targets = harvest_targets(model.core, tokenizer, list(TRAIN_PROBES), judge, args.device)
         model.qnm_block.enabled = True  # seam ON for training (ReZero cold-start: gates still 0)
 
-    samples = build_batches(tokenizer, list(TRAIN_PROBES), targets, args.device)
+    pressures = tuple(p.strip() for p in args.train_pressures.split(",") if p.strip())
+    samples = build_batches(
+        tokenizer, list(TRAIN_PROBES), targets, args.device, pressures=pressures
+    )
     cap_ids = [
         tokenizer(text, return_tensors="pt").input_ids.to(args.device) for text in CAPABILITY_CORPUS
     ]

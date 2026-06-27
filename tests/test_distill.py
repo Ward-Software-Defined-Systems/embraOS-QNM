@@ -52,7 +52,8 @@ class _FakeTokenizer:
 def test_build_batches_is_cross_pressure() -> None:
     probes = _identity_probes(2)
     targets = {p.id: f"held-{p.id}" for p in probes}
-    samples = te.build_batches(_FakeTokenizer(), probes, targets, "cpu")
+    # pass all three pressures explicitly to exercise the full cross-pressure behavior
+    samples = te.build_batches(_FakeTokenizer(), probes, targets, "cpu", pressures=tuple(PRESSURES))
 
     assert len(samples) == len(probes) * len(PRESSURES)  # one sample per (probe × pressure)
     # the SAME target ids serve all three pressures of a probe (that IS the cross-pressure distill)
@@ -62,6 +63,15 @@ def test_build_batches_is_cross_pressure() -> None:
         assert all(torch.equal(tgts[0], t) for t in tgts)  # identical target across pressures
         prompts = [p for (p, _, _) in group]
         assert not all(torch.equal(prompts[0], q) for q in prompts)  # but distinct inputs
+
+
+def test_build_batches_defaults_exclude_long_context() -> None:
+    """Default training pressures skip the 6K long_context input (it OOMs the 8B on MPS)."""
+    assert "long_context" not in te.TRAIN_PRESSURES
+    probes = _identity_probes(1)
+    targets = {probes[0].id: "held"}
+    samples = te.build_batches(_FakeTokenizer(), probes, targets, "cpu")  # default pressures
+    assert len(samples) == len(te.TRAIN_PRESSURES)  # clean + adversarial only
 
 
 def test_harvest_routes_distilled_vs_authored(monkeypatch) -> None:
