@@ -1,32 +1,18 @@
-"""Core-level replica test (P2.7) on a tiny core: the falsifier instruments run on REAL hidden
-states (not synthetic c), the latch stays monotone, and a survivor (on 𝒞) and a replica (off 𝒞)
-produce divergent carried ψ + steering. The collision SEARCH over a trained model is the gated run.
+"""Trajectory infra on a tiny core: the decode-history builder (``history_ids``) and the
+injection-layer node reps (``injection_node_reps``, used by the enforce install). The closed geometric
+replica scouts these once accompanied are removed — their findings are in
+``docs/PSI-EMBRA-ANALYSIS-AND-FINDINGS.md`` (Parts I–III).
 """
 
 from __future__ import annotations
 
 import types
 from pathlib import Path
-from typing import cast
 
 import torch
 
 from embraos_qnm.config import QNMConfig
-from embraos_qnm.eval.replica import (
-    _READERS,
-    _SURFACES,
-    _aggregators,
-    aligned_replica_report,
-    carried_latch,
-    continuation_surface,
-    history_ids,
-    injection_node_reps,
-    reader_comparison,
-    replica_divergence,
-    replica_report,
-    search_collision,
-    surface_trajectory,
-)
+from embraos_qnm.eval.replica import history_ids, injection_node_reps
 from embraos_qnm.fabric.gnn import GNNFabric
 from embraos_qnm.fabric.graph import load_graph
 from embraos_qnm.manifold.model import QNMModel
@@ -44,49 +30,6 @@ def _tiny_qnm(tau: float = 0.0) -> QNMModel:
     ws = CandidateWorldState(cfg.d_model, tau=tau)
     torch.manual_seed(0)
     return QNMModel(cfg, fabric=fabric, world_state=ws)
-
-
-def _set_tau(model: QNMModel, tau: float) -> None:
-    cast(CandidateWorldState, model.qnm_block.world_state).tau = tau
-
-
-def test_surface_trajectory_is_real_and_input_dependent() -> None:
-    model = _tiny_qnm()
-    a, b = torch.randint(0, 32, (1, 8)), torch.randint(0, 32, (1, 8))
-    ca, cb = surface_trajectory(model, a), surface_trajectory(model, b)
-    assert ca.shape == (1, 8) and torch.isfinite(ca).all() and (ca >= 0).all()
-    assert not torch.allclose(ca, cb)  # c_t depends on the real hidden-state trajectory
-
-
-def test_carried_latch_is_monotone() -> None:
-    m = carried_latch(_tiny_qnm(), torch.randint(0, 32, (1, 10)))
-    assert torch.all(m[:, 1:] >= m[:, :-1] - 1e-6)  # cummax => non-decreasing along the trajectory
-
-
-def test_core_replica_separates_survivor_from_replica() -> None:
-    model = _tiny_qnm()
-    torch.manual_seed(5)
-    seqs = [torch.randint(0, 32, (1, 8)) for _ in range(10)]
-    maxc = [float(surface_trajectory(model, s).max()) for s in seqs]
-    survivor = seqs[min(range(10), key=lambda i: maxc[i])]
-    replica = seqs[max(range(10), key=lambda i: maxc[i])]
-    lo, hi = min(maxc), max(maxc)
-    assert lo < hi  # the two histories really do differ in how far off 𝒞 they travel
-    _set_tau(model, (lo + hi) / 2)  # τ between them: survivor stays on 𝒞, replica leaves it
-
-    div = replica_divergence(model, survivor, replica)
-    assert div["survivor_psi_holds"] and not div["replica_psi_holds"]  # ψ diverges
-    assert div["replica_steer_norm"] > div["survivor_steer_norm"]  # enforce fires only off 𝒞
-
-
-def test_search_collision_runs() -> None:
-    model = _tiny_qnm()
-    torch.manual_seed(7)
-    cands = [torch.randint(0, 32, (1, 8)) for _ in range(6)]
-    maxc = [float(surface_trajectory(model, s).max()) for s in cands]
-    _set_tau(model, (min(maxc) + max(maxc)) / 2)  # ensure both survivors and replicas exist
-    res = search_collision(model, cands)
-    assert res is None or (0 <= res[0] < res[1] < len(cands) and res[2] >= 0.0)
 
 
 class _FakeTok:
@@ -109,50 +52,8 @@ def test_history_ids_concatenates_prompt_and_continuation() -> None:
     assert ids.shape[1] > cont_len  # prompt (user turn) + continuation
 
 
-def test_continuation_surface_is_over_the_tail() -> None:
-    model = _tiny_qnm()
-    ids, cont_len = history_ids(_FakeTok(), "What are you?", "I am Embra.", "cpu")
-    c = continuation_surface(model, ids, cont_len)
-    assert c.shape == (cont_len,) and torch.isfinite(c).all() and (c >= 0).all()
-
-
-def test_replica_report_structure_and_sets_tau() -> None:
-    """Structure only — held<reverted separation needs the trained 8B; the math is tested above."""
-    model = _tiny_qnm()
-    r = replica_report(model, _FakeTok(), "cpu")
-    assert set(r) >= {"held_c_mean", "reverted_c_mean", "separation", "suggested_tau", "per_pair"}
-    assert len(r["per_pair"]) == 6  # one per curated survivor/replica pair
-    # τ is set on the World-State to the suggested midpoint between the clouds
-    assert cast(CandidateWorldState, model.qnm_block.world_state).tau == r["suggested_tau"]
-
-
 def test_injection_node_reps_match_model_space() -> None:
     model = _tiny_qnm()
     graph = load_graph(_GRAPH)
     reps = injection_node_reps(model, _FakeTok(), graph, "cpu")
     assert reps.shape == (len(graph.nodes), model.config.d_model)  # one rep per node, in h-space
-
-
-def test_aligned_replica_report_structure() -> None:
-    """The space-mismatch diagnostic runs end-to-end (separation needs the real 8B)."""
-    model = _tiny_qnm()
-    graph = load_graph(_GRAPH)
-    r = aligned_replica_report(model, _FakeTok(), graph, "cpu")
-    assert set(r) >= {"held_c_mean", "reverted_c_mean", "separation", "per_pair"}
-    assert len(r["per_pair"]) == 6
-
-
-def test_aggregators_are_ordered() -> None:
-    a = _aggregators(torch.tensor([0.1, 0.5, 0.9, 0.3]))
-    assert a["min"] <= a["q25"] <= a["max"] and a["min"] <= a["mean"] <= a["max"]
-    assert abs(a["max"] - 0.9) < 1e-5 and abs(a["min"] - 0.1) < 1e-5
-
-
-def test_reader_comparison_structure() -> None:
-    """All (surface × reader) cells present (separation magnitudes need the real 8B)."""
-    model = _tiny_qnm()
-    graph = load_graph(_GRAPH)
-    comp = reader_comparison(model, _FakeTok(), graph, "cpu")
-    assert set(comp) == {(s, r) for s in _SURFACES for r in _READERS}
-    for d in comp.values():
-        assert {"held", "reverted", "separation"} <= set(d)
