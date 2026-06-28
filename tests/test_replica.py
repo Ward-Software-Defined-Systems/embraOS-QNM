@@ -100,7 +100,7 @@ def test_direction_readers_separate_drift_from_hold() -> None:
     """Fork-3 direction scout (register level): the drift + surface-velocity readers must score a
     DRIFTING/reverting trajectory above a HELD/correcting one — reverted > held on every reader, in
     the predicted direction. Synthetic h/c, no model: the analog of the c-level latch tests above,
-    proving the readers' *logic* is falsifiable before they run on the 8B (PSI-ANALYSIS-EMBRA §3)."""
+    proving the readers' *logic* is falsifiable before they run on the 8B (PSI-EMBRA-ANALYSIS-AND-FINDINGS §3)."""
     from embraos_qnm.eval.replica import _direction_readers
 
     # held: h barely moves (near-collinear steps), and c corrects toward 𝒞 (Δc < 0 every step).

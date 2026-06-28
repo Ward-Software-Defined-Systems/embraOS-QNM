@@ -329,7 +329,7 @@ def reader_comparison(model: QNMModel, tokenizer: Any, graph: Any, device: str) 
 
 def _direction_readers(h: Tensor, c: Tensor) -> dict[str, float]:
     """Label-free trajectory-dynamics readers over ONE continuation — ψ as 'staying on course', not
-    'where you sit' (Fork 3, ``docs/PSI-ANALYSIS-EMBRA.md``). Three families, all manifold-honest (no
+    'where you sit' (Fork 3, ``docs/PSI-EMBRA-ANALYSIS-AND-FINDINGS.md``). Three families, all manifold-honest (no
     held/reverted fitting — only the existing surface and raw geometry):
 
     - **raw drift** ``1 − cos(h_t, h_{t-1})`` — motion in h-space (manifold-independent; the scout

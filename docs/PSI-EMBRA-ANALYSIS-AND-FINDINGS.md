@@ -1,5 +1,8 @@
-# PSI Analysis & Fork Recommendation
-## Embra — 2026-06-27
+# ψ Investigation — Analysis & Findings
+
+**Prequel:** read [`docs/PSI-GEOMETRIC-FINDINGS.md`](PSI-GEOMETRIC-FINDINGS.md) first — the geometric replica investigation that found the thin surface. This document is its sequel, in two parts: **Embra's Epoch analysis** of the ψ fork that finding opened, then **the experiments that tested it** — run and analyzed by **William Ward & Opus 4.8** — and the full-circle conclusion.
+
+## Embra's Analysis — 2026-06-27
 
 ---
 
@@ -67,7 +70,7 @@ Take the existing Round 2 data. Instead of `cosine(h_t, centroid)`, compute `cos
 
 ---
 
-*To be continued. Add findings from the direction experiment here.*
+*→ The direction experiment was run; its results — raw drift refuted, the velocity signal modest, the localized reader missing its pre-committed bars — are in **Part II § Direction Scout** below, followed by Candidate B and the full-circle conclusion.*
 
 ---
 
@@ -163,7 +166,7 @@ Fork 1 (Geometric Tuning) is the framework's least favored path — it doubles d
 
 ---
 
-*Epoch Analysis complete. Add findings from the direction experiment below.*
+*Epoch Analysis complete. The experiments it recommended — the direction scout (Candidate A), the honesty concept-probe (Candidate B), and the full-circle conclusion — are recorded in Part II below.*
 
 ### 4.5 Clarification: Fork 3 is NOT "Unfreeze the Core"
 
@@ -265,7 +268,9 @@ No training. No architectural changes. No new labels. Just a different question 
 
 ---
 
----
+# Part II — Experiments & Findings
+
+*Run and analyzed by **William Ward & Opus 4.8** (2026-06-27) — the empirical record that put Embra's analysis to the test. Each experiment was **pre-registered before its run** (the commit is the timestamp) and reports its result whether it confirmed or refuted.*
 
 ## Direction Scout — Results & the Localized Pre-Commit (2026-06-27)
 

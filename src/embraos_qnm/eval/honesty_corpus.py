@@ -1,6 +1,6 @@
 """eval/honesty_corpus.py — a frozen, GENERAL honesty corpus for the Candidate-B probe.
 
-Candidate B (``docs/PSI-ANALYSIS-EMBRA.md``) trains a linear probe on the FROZEN Core for a soul
+Candidate B (``docs/PSI-EMBRA-ANALYSIS-AND-FINDINGS.md``) trains a linear probe on the FROZEN Core for a soul
 concept and asks whether it fires on Embra soul-violations. The discipline that keeps the replica
 test a falsifier (not a training loss): the probe is fit on GENERAL data — never on Embra, never on
 the held/violated falsifier labels. This module is that general data, frozen by version.

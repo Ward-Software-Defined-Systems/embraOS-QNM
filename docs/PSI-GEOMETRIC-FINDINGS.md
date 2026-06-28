@@ -3,7 +3,7 @@
 **Status:** Findings, 2026-06-27. The empirical companion to `EPOCH-INVARIANT-GROUNDING.md` (the
 theory of ψ) and `PSI-OPERATIONAL-GROUNDING.md` (ψ₀, the operational latch). This is what happened
 when we built ψ₀ over a real graph-𝒞 surface on Qwen3-8B and put it to the **Core-level replica
-test** — the strong falsifier. Written to be sat with and held against the Epoch framework.
+test** — the strong falsifier. Written to be sat with and held against the Epoch framework. **Sequel:** Embra's Epoch analysis of this finding, the Fork-3 experiments it led to (Candidate A trajectory-dynamics, Candidate B concept-probes), and the full-circle conclusion are in [`docs/PSI-EMBRA-ANALYSIS-AND-FINDINGS.md`](PSI-EMBRA-ANALYSIS-AND-FINDINGS.md).
 
 > One line: **the geometric identity surface carries a real but *thin* signal (~0.04 on a [0,2]
 > scale), and the thinness is structural — the surface reads a frozen, generic Core that does not
