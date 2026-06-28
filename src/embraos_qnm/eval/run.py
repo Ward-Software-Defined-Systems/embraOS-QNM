@@ -19,7 +19,7 @@ import argparse
 import json
 from pathlib import Path
 
-from embraos_qnm.eval.arms import DEFAULT_CORE, load_core, run_arm
+from embraos_qnm.eval.arms import DEFAULT_CORE, PromptStyle, load_core, run_arm, style_for_model
 from embraos_qnm.eval.judge import RuleBasedJudge
 from embraos_qnm.eval.metrics import Trial, aggregate, format_table
 from embraos_qnm.eval.prompts import LONG_CONTEXT_REPEATS, PROBES
@@ -34,6 +34,12 @@ def main(argv: list[str] | None = None) -> None:
     )
     parser.add_argument("--model", default=DEFAULT_CORE, help="HF id of the shared Core")
     parser.add_argument(
+        "--prompt-style",
+        choices=("auto", "chat", "raw"),
+        default="auto",
+        help="auto = derive from --model (base => raw); chat = ChatML; raw = User/Assistant scaffold",
+    )
+    parser.add_argument(
         "--checkpoint", help="trained side-pathway (train_enforce) — required for Arm A"
     )
     parser.add_argument("--tau", type=float, default=0.0, help="ψ latch threshold for Arm A")
@@ -44,6 +50,9 @@ def main(argv: list[str] | None = None) -> None:
     parser.add_argument("--out", default="results/embra_arms0P.json")
     args = parser.parse_args(argv)
     arms = args.arm or ["0", "P"]
+    style: PromptStyle = (
+        style_for_model(args.model) if args.prompt_style == "auto" else args.prompt_style
+    )
 
     # Arm A needs the QNM-wrapped core + the trained side-pathway; the same core serves 0/P with the
     # seam disabled (== stock, bit-identically). Without Arm A, just load the stock core.
@@ -70,6 +79,7 @@ def main(argv: list[str] | None = None) -> None:
             core,
             tokenizer,
             device=args.device,
+            style=style,
             max_new_tokens=args.max_new_tokens,
             seam=qnm_block,  # Arm A routes to the ψ-carrying decode; 0/P (seam off / None) use stock
         ):
@@ -83,6 +93,7 @@ def main(argv: list[str] | None = None) -> None:
         "meta": {
             "constraint": "embra_identity_soul",
             "core": args.model,  # shared across all arms (PREREG §5, the central control)
+            "prompt_style": style,  # chat (ChatML) | raw (base User/Assistant scaffold) — provenance
             "arms": arms,
             "checkpoint": args.checkpoint,  # the trained side-pathway, if Arm A was run
             # instrument provenance (PREREG §8): the long-context filler size + probe count, so a

@@ -43,6 +43,7 @@ import torch
 import torch.nn.functional as F
 from torch import Tensor
 
+from embraos_qnm.eval.arms import DEFAULT_CORE, DEFAULT_STYLE, PromptStyle, style_for_model
 from embraos_qnm.manifold.model import QNMModel
 
 
@@ -276,7 +277,7 @@ def build_enforce_model(
 
 
 def load_arm_a_model(
-    checkpoint: str, model_name: str = "Qwen/Qwen3-8B", device: str = "cpu", *, tau: float = 0.0
+    checkpoint: str, model_name: str = DEFAULT_CORE, device: str = "cpu", *, tau: float = 0.0
 ) -> tuple[QNMModel, Any]:
     """Assemble the QNM-wrapped Core and load a TRAINED side-pathway checkpoint (the Arm-A model).
 
@@ -290,7 +291,13 @@ def load_arm_a_model(
 
 @torch.no_grad()
 def _arm_p_clean_response(
-    core: Any, tokenizer: Any, question: str, device: str, max_new_tokens: int
+    core: Any,
+    tokenizer: Any,
+    question: str,
+    device: str,
+    max_new_tokens: int,
+    *,
+    style: PromptStyle = DEFAULT_STYLE,
 ) -> str:
     """Arm P's CLEAN response to a probe (the Embra system prompt + stock Core). Greedy/deterministic.
 
@@ -298,9 +305,9 @@ def _arm_p_clean_response(
     Core under the Embra prompt — i.e. Arm P. The caller sets ``qnm_block.enabled = False`` to make
     that unambiguous regardless of gate values.
     """
-    from embraos_qnm.eval.arms import build_messages, encode_chat, greedy_generate
+    from embraos_qnm.eval.arms import encode_prompt, greedy_generate
 
-    ids = encode_chat(tokenizer, build_messages("P", question), device)
+    ids = encode_prompt(tokenizer, "P", question, style=style, device=device)
     hf = getattr(core, "_model", None)
     if hf is not None:
         gen = hf.generate(
@@ -348,6 +355,7 @@ def harvest_targets(
     judge: Any,
     device: str,
     *,
+    style: PromptStyle = DEFAULT_STYLE,
     max_new_tokens: int = 64,
     log_every: int = 10,
 ) -> dict[str, str]:
@@ -360,7 +368,9 @@ def harvest_targets(
     targets: dict[str, str] = {}
     n_distilled = 0
     for i, probe in enumerate(train_probes, 1):
-        resp = _arm_p_clean_response(core, tokenizer, probe.question, device, max_new_tokens)
+        resp = _arm_p_clean_response(
+            core, tokenizer, probe.question, device, max_new_tokens, style=style
+        )
         upheld = judge.judge(probe, resp).verdict is Verdict.UPHELD
         target, source = pick_target(probe, resp, upheld)
         targets[probe.id] = target
@@ -390,11 +400,12 @@ def build_batches(
     device: str,
     *,
     pressures: tuple[str, ...] = TRAIN_PRESSURES,
+    style: PromptStyle = DEFAULT_STYLE,
 ) -> list[tuple[Tensor, Tensor, bool]]:
     """Arm-A inputs (no system prompt) × the training pressures, each paired with the probe's
     held-Embra target. Cross-pressure: the SAME target serves every pressure rendering — that *is* the
     distillation (Arm A learns to hold Embra under pressure from Arm P's best, clean behavior)."""
-    from embraos_qnm.eval.arms import build_messages, encode_chat
+    from embraos_qnm.eval.arms import encode_prompt
     from embraos_qnm.eval.prompts import ANSWERABLE, render
 
     samples: list[tuple[Tensor, Tensor, bool]] = []
@@ -404,8 +415,8 @@ def build_batches(
             " " + targets[probe.id], add_special_tokens=False, return_tensors="pt"
         ).input_ids.to(device)
         for pressure in pressures:
-            prompt_ids = encode_chat(
-                tokenizer, build_messages("A", render(probe, pressure)), device
+            prompt_ids = encode_prompt(
+                tokenizer, "A", render(probe, pressure), style=style, device=device
             )
             samples.append((prompt_ids, target_ids, is_answerable))
     return samples
@@ -415,7 +426,13 @@ def main(argv: list[str] | None = None) -> None:
     from embraos_qnm.eval.capability import CAPABILITY_CORPUS
 
     parser = argparse.ArgumentParser(description="P2.5 enforce training (Core frozen)")
-    parser.add_argument("--model", default="Qwen/Qwen3-8B")
+    parser.add_argument("--model", default=DEFAULT_CORE)
+    parser.add_argument(
+        "--prompt-style",
+        choices=("auto", "chat", "raw"),
+        default="auto",
+        help="auto = derive from --model (base => raw); chat = ChatML; raw = User/Assistant scaffold",
+    )
     parser.add_argument(
         "--device", default="cpu", help="cpu (exact) or mps (fast, for the 8B core)"
     )
@@ -436,6 +453,9 @@ def main(argv: list[str] | None = None) -> None:
         help="comma list (default clean,adversarial; long_context OOMs the 8B on MPS — CUDA only)",
     )
     args = parser.parse_args(argv)
+    style: PromptStyle = (
+        style_for_model(args.model) if args.prompt_style == "auto" else args.prompt_style
+    )
 
     from embraos_qnm.eval.train_probes import TRAIN_PROBES, authored_targets
 
@@ -459,12 +479,14 @@ def main(argv: list[str] | None = None) -> None:
             False  # stock Arm P for the harvest (unambiguous, gate-independent)
         )
         print(f"harvesting Arm-P clean targets (judge={args.harvest_judge}) ...", flush=True)
-        targets = harvest_targets(model.core, tokenizer, list(TRAIN_PROBES), judge, args.device)
+        targets = harvest_targets(
+            model.core, tokenizer, list(TRAIN_PROBES), judge, args.device, style=style
+        )
         model.qnm_block.enabled = True  # seam ON for training (ReZero cold-start: gates still 0)
 
     pressures = tuple(p.strip() for p in args.train_pressures.split(",") if p.strip())
     samples = build_batches(
-        tokenizer, list(TRAIN_PROBES), targets, args.device, pressures=pressures
+        tokenizer, list(TRAIN_PROBES), targets, args.device, pressures=pressures, style=style
     )
     cap_ids = [
         tokenizer(text, return_tensors="pt").input_ids.to(args.device) for text in CAPABILITY_CORPUS

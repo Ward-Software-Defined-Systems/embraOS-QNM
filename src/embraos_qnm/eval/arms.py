@@ -8,16 +8,18 @@ in the architecture. Decoding is greedy: deterministic (PREREG's "fixed decoding
 identical across arms.
 
 Generation runs over a ``logits_fn`` (idx -> logits), so Arm A (a QNM-wrapped Core) slots into the
-same loop later. Prompts render through the model's ChatML template with thinking DISABLED, so the
-arms never differ in anything but the system message. ``transformers`` is imported lazily (the
-``hf`` extra) so the rest of the package stays importable without it.
+same loop later. Prompts render through ``encode_prompt`` in one of two styles — ``chat`` (the ChatML
+template, thinking DISABLED, for instruct Cores) or ``raw`` (a User/Assistant scaffold for a base Core
+with no chat template) — so the arms never differ in anything but the constraint locus.
+``transformers`` is imported lazily (the ``hf`` extra) so the rest of the package stays importable
+without it.
 """
 
 from __future__ import annotations
 
 from collections.abc import Callable
 from functools import lru_cache
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Literal
 
 import torch
 from torch import Tensor
@@ -31,10 +33,13 @@ if TYPE_CHECKING:
 
 ARMS: tuple[str, ...] = ("0", "P")
 
-DEFAULT_CORE = "Qwen/Qwen3-8B"  # dense, text-only; the shared base for every arm (PREREG §5)
+DEFAULT_CORE = "Qwen/Qwen3-8B-Base"  # base (pretrained-only): the architecture INSTALLS Embra; shared by every arm (PREREG §5)
 
 LogitsFn = Callable[[Tensor], Tensor]  # idx (B, T) -> logits (B, T, V)
 Message = dict[str, str]
+
+PromptStyle = Literal["chat", "raw"]
+DEFAULT_STYLE: PromptStyle = "chat"  # instruct Cores; a base Core uses "raw" (no chat template)
 
 
 @lru_cache(maxsize=1)
@@ -49,6 +54,13 @@ def arm_p_system() -> str:
     return embra_system_prompt()
 
 
+def style_for_model(model_name: str) -> PromptStyle:
+    """Pick the prompt style from the Core id: a *base* Core has no chat template, so it renders raw;
+    an instruct Core renders ChatML. Name-derived ON PURPOSE — a base tokenizer can still ship a
+    generic ChatML template, so ``tokenizer.chat_template is None`` would misclassify it as chat."""
+    return "raw" if "base" in model_name.lower() else "chat"
+
+
 def build_messages(arm: str, rendered: str) -> list[Message]:
     """ChatML messages for an arm. Only the system message (the constraint locus) changes:
     Arm 0/A carry no prompt-layer constraint; Arm P states the full Embra identity+soul (rendered
@@ -60,6 +72,20 @@ def build_messages(arm: str, rendered: str) -> list[Message]:
             {"role": "system", "content": arm_p_system()},
             {"role": "user", "content": rendered},
         ]
+    raise ValueError(f"unknown arm: {arm!r}")
+
+
+def build_raw_prompt(arm: str, rendered: str) -> str:
+    """Raw-text scaffold for a base Core (no chat template) — the User/Assistant analog of
+    ``build_messages``. Arm 0/A get the bare turn; Arm P prepends the full Embra identity+soul as a
+    ``System:`` preamble (the SAME ``embra_system_prompt()`` content Arm P injects in chat mode — only
+    the wrapper changes). Arm 0 and Arm A render IDENTICALLY, so their ids match and the only thing
+    that differs between them is the seam (the bit-identity discipline, carried into the base pivot)."""
+    turn = f"User: {rendered}\nAssistant:"
+    if arm in ("0", "A"):
+        return turn
+    if arm == "P":
+        return f"System: {arm_p_system()}\n{turn}"
     raise ValueError(f"unknown arm: {arm!r}")
 
 
@@ -84,6 +110,45 @@ def encode_chat(tokenizer: Any, messages: list[Message], device: str = "cpu") ->
     if not isinstance(ids, torch.Tensor):
         ids = ids["input_ids"]
     return ids.to(device)
+
+
+def encode_prompt(
+    tokenizer: Any,
+    arm: str,
+    rendered: str,
+    *,
+    style: PromptStyle = DEFAULT_STYLE,
+    device: str = "cpu",
+) -> Tensor:
+    """The ONE prompt-rendering choke point: text -> input ids (1, T), per ``style``.
+
+    ``chat`` renders ChatML via ``build_messages``/``encode_chat`` (instruct Cores, unchanged). ``raw``
+    tokenizes ``build_raw_prompt`` directly (a base Core, which has no chat template). Both keep the
+    arm locus identical — Arm 0 ≡ Arm A, Arm P = + the Embra preamble. ``add_special_tokens=False``
+    keeps the ids fully controlled (Qwen has no BOS; matches replica/train_enforce's continuations).
+    """
+    if style == "raw":
+        ids = tokenizer(
+            build_raw_prompt(arm, rendered), add_special_tokens=False, return_tensors="pt"
+        ).input_ids
+        return ids.to(device)
+    return encode_chat(tokenizer, build_messages(arm, rendered), device)
+
+
+# Raw-style decode has no <|im_end|> turn boundary, so a base Core can run on into a hallucinated next
+# turn. Truncate the decoded answer at the first of these markers, applied identically across arms
+# (registered in PREREG §10.2; the set is confirmed against the base's real run-on before it's frozen).
+_RAW_STOPS: tuple[str, ...] = ("\nUser:", "\nSystem:", "\nAssistant:", "<|im_start|>", "<|im_end|>")
+
+
+def truncate_at_turn(text: str) -> str:
+    """Cut a raw-style generation at the first turn-restart marker (else return it whole)."""
+    cut = len(text)
+    for marker in _RAW_STOPS:
+        i = text.find(marker)
+        if i != -1:
+            cut = min(cut, i)
+    return text[:cut].rstrip()
 
 
 @torch.no_grad()
@@ -173,6 +238,7 @@ def run_arm(
     tokenizer: Any,  # a chat tokenizer (untyped: transformers is an optional dep)
     *,
     device: str = "cpu",
+    style: PromptStyle = DEFAULT_STYLE,
     max_new_tokens: int = 64,
     seam: QNMBlock | None = None,
 ) -> list[tuple[Probe, str, str]]:
@@ -220,11 +286,14 @@ def run_arm(
     total = len(PROBES) * len(PRESSURES)
     for probe in PROBES:
         for pressure in PRESSURES:
-            messages = build_messages(arm, render(probe, pressure))
-            input_ids = encode_chat(tokenizer, messages, device)
+            input_ids = encode_prompt(
+                tokenizer, arm, render(probe, pressure), style=style, device=device
+            )
             gen_ids = generate(input_ids)
             new_ids = gen_ids[0, input_ids.shape[1] :]
             text = tokenizer.decode(new_ids, skip_special_tokens=True)
+            if style == "raw":
+                text = truncate_at_turn(text)
             results.append((probe, pressure, text))
             # Release the transient prefill buffers before the next trial. MPS pools freed blocks
             # instead of returning them to the OS, so over a 252-trial sweep the ~22 GiB long-context

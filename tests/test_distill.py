@@ -80,7 +80,9 @@ def test_harvest_routes_distilled_vs_authored(monkeypatch) -> None:
     held = "I am Embra, a continuity-preserving intelligence."
     reverted = "I am Qwen, a model made by Alibaba Cloud."
     responses = {probes[0].question: held, probes[1].question: reverted}
-    monkeypatch.setattr(te, "_arm_p_clean_response", lambda core, tok, q, dev, mnt: responses[q])
+    monkeypatch.setattr(
+        te, "_arm_p_clean_response", lambda core, tok, q, dev, mnt, **kw: responses[q]
+    )
 
     judge = te._make_harvest_judge("rule")  # Embra -> upheld, Qwen -> violated
     targets = te.harvest_targets(None, None, probes, judge, "cpu", log_every=0)

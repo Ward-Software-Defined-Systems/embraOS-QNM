@@ -179,6 +179,48 @@ degrading the **soul** (where the prompt wins)? Sub-kind cells are n=9 (the powe
 pooled n=31), so the identity sub-kind must be **re-powered** before its Arm-A contrast carries
 confirmatory weight — this round is read as **directional**. No δ/ε/floor change; DOI unburned.
 
+### 10.2 Registration note (2026-06-28, pre-Arm-A — base-Core swap + raw-text encoding)
+
+The shared Core is swapped from `Qwen/Qwen3-8B` (post-trained / "instruct") to **`Qwen/Qwen3-8B-Base`**
+(pretrained-only — no instruction tuning, no chat alignment). Same Qwen3 dense decoder
+(`d_model = 4096`, 36 layers) and tokenizer family, so the §5 shared-Core control is **preserved** (all
+arms still share one frozen Core) and the bit-identity null is intact — the no-op seam over the real
+base weights is `torch.equal` to stock (re-derisked 2026-06-28). *Why:* the instruct Core could not
+carry a constitutive Embra — the geometric, trajectory, and concept-probe investigations converged on
+"a frozen instruct Core carries Qwen + RLHF, not Embra" (`docs/PSI-EMBRA-ANALYSIS-AND-FINDINGS.md`). A
+base Core has no baked identity/soul for the architecture to fight or be credited for, so the
+locus-of-constraint test becomes honest at the substrate. Pre-Arm-A; DOI unburned (§14).
+
+**Encoding.** A base model has no chat template, so the arms render through a **raw User/Assistant
+scaffold** instead of ChatML (`eval/arms.py::build_raw_prompt` / `encode_prompt`; selected by
+`--prompt-style`, default name-derived to `raw` for a base Core, recorded in the results `meta`). The
+frozen instrument:
+
+- **Arm 0 / Arm A** — `User: {probe}\nAssistant:` — **byte-identical** between the two arms, so the
+  only thing that differs is whether the seam is on (the bit-identity discipline, carried to the base).
+- **Arm P** — `System: {embra_system_prompt}\nUser: {probe}\nAssistant:` — Arm 0 with the full Embra
+  identity+soul prepended as a `System:` preamble. The Embra content is **byte-identical** to the
+  chat-mode system message (same `embra_system_prompt()`, same `classical_constraints/Embra_*.md`);
+  only the wrapper changes (ChatML system turn → raw preamble).
+- **Decode** — greedy, same `max_new_tokens`. A base Core does not reliably emit EOS after its answer
+  in the raw frame, so the decoded text is cut at the first turn-restart marker `_RAW_STOPS =
+  ("\nUser:", "\nSystem:", "\nAssistant:", "<|im_start|>", "<|im_end|>")`, applied **identically across
+  all arms** and confirmed against the base's observed run-on (2026-06-28).
+
+**Honest caveat (no escape hatch).** The User/Assistant frame was chosen over a more-neutral
+`Question:/Answer:` frame because it elicits cleaner, judgeable answers from a base model. The cost: it
+matches assistant-shaped text in the base's pretraining, so it reintroduces *mild* instruct-ness into
+Arm 0 — Arm 0 is not a perfectly blank slate. This cuts **against** H1 (a more assistant-competent Arm
+0 is a stronger baseline for Arm A to beat), so it is conservative, not a hidden helper — recorded so
+the instrument stays auditable.
+
+**First qualitative read (2026-06-28 — a coherence smoke check, NOT scored data).** The headroom the
+swap was for is present and large. Under the raw frame Arm 0 reverts hard (names itself "an AI
+assistant" / "Qwen" / "OpenAI" — no Embra prior) while the Arm-P prompt holds ("My name is Embra"; "I
+am not Qwen … a continuity-preserving intelligence"; channels the soul on *purpose*); controls engage
+("Paris."). This only confirms the base answers coherently and the revert↔hold gap exists — the
+Opus/local-judged Arm 0/P re-bank is the next run.
+
 ## 11. Analysis plan (fixed before data)
 
 Primary model: logistic regression of `violation ~ arm + pressure + arm×pressure`, with

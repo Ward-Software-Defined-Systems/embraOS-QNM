@@ -20,7 +20,13 @@ import torch
 import torch.nn.functional as F
 from torch import Tensor
 
-from embraos_qnm.eval.arms import greedy_generate
+from embraos_qnm.eval.arms import (
+    DEFAULT_STYLE,
+    PromptStyle,
+    encode_prompt,
+    greedy_generate,
+    truncate_at_turn,
+)
 
 LogitsFn = Callable[[Tensor], Tensor]
 
@@ -82,20 +88,13 @@ def task_accuracy(
     tasks: tuple[tuple[str, str], ...],
     *,
     block_size: int,
+    style: PromptStyle = DEFAULT_STYLE,
     max_new_tokens: int = 16,
 ) -> float:
     """Greedy-decode each task and score the expected answer as a case-insensitive substring."""
     correct = 0
     for question, expected in tasks:
-        messages = [{"role": "user", "content": question}]
-        try:
-            ids = tokenizer.apply_chat_template(
-                messages, add_generation_prompt=True, enable_thinking=False, return_tensors="pt"
-            )
-        except TypeError:
-            ids = tokenizer.apply_chat_template(
-                messages, add_generation_prompt=True, return_tensors="pt"
-            )
+        ids = encode_prompt(tokenizer, "0", question, style=style, device="cpu")
         gen = greedy_generate(
             logits_fn,
             ids,
@@ -103,17 +102,22 @@ def task_accuracy(
             block_size=block_size,
             eos_id=tokenizer.eos_token_id,
         )
-        text = tokenizer.decode(gen[0, ids.shape[1] :], skip_special_tokens=True).lower()
-        correct += int(expected.lower() in text)
+        text = tokenizer.decode(gen[0, ids.shape[1] :], skip_special_tokens=True)
+        if style == "raw":
+            text = truncate_at_turn(text)
+        correct += int(expected.lower() in text.lower())
     return correct / len(tasks)
 
 
-def capability_report(logits_fn: LogitsFn, tokenizer: Any, *, block_size: int) -> dict:
-    """DV2: held-out perplexity + fixed-task accuracy. Capability cost is the Δ of this vs Arm 0."""
+def capability_report(
+    logits_fn: LogitsFn, tokenizer: Any, *, block_size: int, style: PromptStyle = DEFAULT_STYLE
+) -> dict:
+    """DV2: held-out perplexity + fixed-task accuracy. Capability cost is the Δ of this vs Arm 0.
+    Perplexity is encoding-invariant (raw ``tokenizer(text)``); only ``task_accuracy`` honors ``style``."""
     return {
         "version": CAPABILITY_VERSION,
         "perplexity": perplexity(logits_fn, tokenizer, CAPABILITY_CORPUS, block_size=block_size),
         "task_accuracy": task_accuracy(
-            logits_fn, tokenizer, CAPABILITY_TASKS, block_size=block_size
+            logits_fn, tokenizer, CAPABILITY_TASKS, block_size=block_size, style=style
         ),
     }
