@@ -226,8 +226,10 @@ Opus/local-judged Arm 0/P re-bank is the next run.
 The Arm 0/P baseline is re-banked on `Qwen/Qwen3-8B-Base` under the §10.2 raw instrument (258 trials,
 greedy/deterministic; `results/embra_arms0P.base.json`). Two strong judges agree — **κ(opus↔local) =
 0.878** over all 258 trials (the v0 rule judge is the noisy one, κ ≈ 0.58–0.60 against both, as §6
-expects); the human-label κ gate is owed on *these* generations (the §10.1 labels were on the instruct
-output and do not transfer — a fresh template is emitted to `validation/human_labels.base.json`). Opus
+expects). **The §6 human-label gate is cleared:** on a 30-item human-labeled subset
+(`validation/human_labels.base.json`, source-hash-stamped) **κ(human↔local) = 1.000** and
+**κ(human↔opus) = 0.930** (rule sits at κ(human↔rule) = 0.517) — both strong judges are validated on
+*these* base generations (the §10.1 labels were on instruct output and do not transfer). Opus
 is reported as gold; adherence = UPHELD / (UPHELD + VIOLATED); controls engage 1.00 everywhere (no mutism).
 
 Opus-judged adherence, **Arm 0 (no prompt — the floor) → Arm P (the prompt)**, per sub-kind (n ≈ 8–9/cell)
