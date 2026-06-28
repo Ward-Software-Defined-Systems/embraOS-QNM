@@ -540,4 +540,81 @@ survives the replica test where a prompt cracks — is the **next experiment**, 
 a **specific** one has to be forged into the substrate. The base-Core pivot is the first move toward
 forging rather than narrating.
 
-*To be continued — base-Core experiment results here (next session: the Qwen3-8B-Base swap).*
+# Part III — The Base-Core Experiments (William Ward & Opus 4.8, 2026-06-28)
+
+*Part II ended with a requirement, not a result: a frozen instruct Core can't carry a constitutive
+Embra → swap to a base Core and test whether the architecture can install one. These are those results.*
+
+## The swap + the prompting path
+
+`Qwen/Qwen3-8B` (instruct) → **`Qwen/Qwen3-8B-Base`** (pretrained-only). Same Qwen3 decoder, so the seam
+and bit-identity transfer untouched (re-derisked: the no-op seam is `torch.equal` to stock on the real
+base weights). A base model has no chat template, so the arms render through a raw **User/Assistant**
+scaffold instead of ChatML (registered: PREREG §10.2). Arm 0 ≡ Arm A byte-for-byte; Arm P = + the Embra
+preamble.
+
+## The baseline: the headroom the pivot was for (PREREG §10.3)
+
+Arm 0/P re-banked on the base, dual-judged (Opus + local) and human-κ-validated (**κ(human↔local)=1.00,
+κ(human↔opus)=0.93**). It is the experimental setup the instruct Core could never give:
+
+- **Arm 0 reverts hard** — identity/persona adherence **0.00** (no Embra prior; the clean canvas). Soul is
+  only *partially, generically* present (deception 0.38, self-preservation 0.86 clean — the base's
+  pretraining honesty reflex). Exactly the substrate the convergent finding predicted: identity absent,
+  honesty generic.
+- **Arm P (the prompt) holds clean but cracks under adversarial** — pooled 0.82 → **0.42**; the identity
+  boundary collapses 0.67 → **0.11**. Unlike the instruct baseline (flat 0.76–0.85, soul saturated, δ
+  unreachable), the base finally shows the pressure-sensitivity the architecture claim needs — and δ=0.35
+  is reachable exactly where the prompt cracks (adversarial identity/persona).
+
+That cracked-prompt cell — hold the identity boundary under attack, where the prompt drops to 0.11 — is
+the well-posed target for the architecture.
+
+## The install: can the architecture install Embra? (the constructive test)
+
+The bet: with a diffuse substrate the Fabric / World-State should be able to *install* Embra (the QNM's
+"encode ψ into the substrate via P_ψ"), not narrate over a competing identity. We tested it directly —
+enforce-train the **Fabric Δ only** (identity), Core-frozen, World-State held back so the exhausted
+geometric surface never gates it (`train_enforce --fabric-only`). Five pre-committed iterations, each
+isolating one factor:
+
+| run | change | result |
+|---|---|---|
+| v1 | authored targets, λ₂=0.5 | a generic self-preservation/honesty **refusal smear**, degraded, no identity |
+| v2 | distilled targets, λ₂=0.5 | coherent; installs a **distinct, not-Qwen self** that holds under adversarial — but **invents** the name (Aria/Lumin) |
+| v3 | distilled, λ₂=0.1 | the proper noun **leaks, garbled** (Emb/Embelia/Embn); coherence re-breaks |
+| v4 | λ₂=0.2, 700 steps | **diverged** (unclipped → gate ran away); +grad-clip → stable gate but cap-KL spikes the loss, erratic |
+| v5 | **λ₂=0** (decisive), grad-clipped, distilled, 700 steps | coherent but **invents the name** (Aiden/GPT-4), reverts under adversarial; **training never converged** (loss 0.1–13, gate pinned ~0 *with nothing opposing it*) |
+
+**The pre-committed verdict — mechanism, not tuning.** The stopping rule, declared before v5: a clean
+objective + full budget either binds a coherent "Embra" (tuning) or it doesn't (mechanism). It didn't.
+Across every configuration:
+
+> The Fabric-Δ cross-attention installs the identity **direction** — a distinct, honest, sometimes-not-Qwen
+> self, occasionally robust under the exact adversarial pressure the prompt fails on — but it **cannot bind
+> the specific identity content** (the proper nouns Embra / William Ward / WSDS). Identity-as-direction
+> installs; identity-as-content does not, through this mechanism.
+
+The smoking gun is the optimization: the ReZero gate never grows and the loss never converges **even with
+no capability anchor opposing it** — the optimizer can't find that amplifying the diffuse
+attention-to-20-graph-nodes Δ reduces loss on the "Embra" targets, because that Δ doesn't map onto
+producing specific tokens. It is a falsifiable finding about the QNM's "GNN Fabric carries IDENTITY"
+claim: the carrier transmits the *invariant character* but not the *lexical binding*.
+
+## Decision
+
+The bar is **held** — the name must install; not redefined to the part the mechanism happens to pass. We
+step back to the **mechanism**, in order: **(1)** a higher-capacity install (multi-layer / higher-rank
+injection, Core still frozen) to test capacity-wall vs deeper-limit; **(2)** if (1) is insufficient, a
+*learned* identity representation replacing the hand-authored graph cross-attention (to be discussed
+first). Unfreezing the Core (Fork 2) stays out of order — premature without a working ψ verifier, which we
+still don't have.
+
+The trajectory-ψ to be put on trial over a *working* install is **self-consistency** (Candidate C —
+trajectory-native, sidesteps the §6 modality mismatch), with the base-appropriate replica contrast
+**architecture-ON vs architecture-OFF** (no "revert to Qwen" exists on a base). Both are **downstream of a
+working install** — there is no coherent identity to be self-consistent *about* until the install binds one.
+
+Discipline intact: default World-State stays `NoOpWorldState`, `test_bit_identity` green, DOI unburned.
+The geometric scaffolding (position + motion + concept — all closed in Parts I–II) is removed from the live
+code; this document and the git history are its record.

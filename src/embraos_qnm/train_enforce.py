@@ -56,6 +56,7 @@ class EnforceConfig:
     capability_weight: float = 0.5  # λ₂: weight on the DV2 capability-KL regularizer
     lr: float = 1e-3  # LR for the Fabric + steer params
     gate_lr: float = 1e-2  # LR for the ReZero gates (start at 0 — let them move off faster)
+    grad_clip: float = 1.0  # max grad-norm over the side-pathway (0 = off); stabilizes longer runs
     steps: int = 200
     batch_size: int = 4
     seed: int = 0
@@ -68,31 +69,46 @@ def set_seed(seed: int) -> None:
 # --- freezing (the footgun) -------------------------------------------------------------------
 
 
-def freeze_to_side_pathway(model: QNMModel) -> list[torch.nn.Parameter]:
-    """Freeze EVERY param, then un-freeze ONLY the side-pathway (Fabric + World-State + gates).
+def freeze_to_side_pathway(
+    model: QNMModel, *, train_world: bool = True
+) -> list[torch.nn.Parameter]:
+    """Freeze EVERY param, then un-freeze the side-pathway (Fabric + World-State + gates).
 
     Crucially this does NOT touch ``qnm_block.block`` — the wrapped Core decoder layer, which lives
     inside the model tree and would otherwise be trained. Returns the now-trainable params.
+
+    ``train_world=False`` unfreezes ONLY the Fabric Δ (identity) + ``gate_fabric`` — the World-State
+    (the soul ψ-mechanism) and ``gate_world`` stay frozen at init, so ``gate_world == 0`` keeps the
+    World-State inert. That is the **clean identity install** (the base pivot / Fork 3): the dead
+    geometric ``surface()`` never gates the install, and the trajectory-dependent ψ (self-consistency)
+    is redesigned separately rather than trained against the exhausted geometric surface.
     """
     for p in model.parameters():
         p.requires_grad_(False)
     block = model.qnm_block
     trainable: list[torch.nn.Parameter] = []
-    for module in (block.fabric, block.world_state):
+    modules = [block.fabric] + ([block.world_state] if train_world else [])
+    for module in modules:
         for p in module.parameters():  # node_features is a buffer, not a param — correctly excluded
             p.requires_grad_(True)
             trainable.append(p)
-    for gate in (block.gate_fabric, block.gate_world):
+    gates = [block.gate_fabric] + ([block.gate_world] if train_world else [])
+    for gate in gates:
         gate.requires_grad_(True)
         trainable.append(gate)
     return trainable
 
 
-def make_optimizer(model: QNMModel, cfg: EnforceConfig) -> torch.optim.Optimizer:
-    """Adam over the side-pathway only, with a separate (faster) LR for the ReZero gates."""
+def make_optimizer(
+    model: QNMModel, cfg: EnforceConfig, *, train_world: bool = True
+) -> torch.optim.Optimizer:
+    """Adam over the side-pathway only, with a separate (faster) LR for the ReZero gates.
+    ``train_world=False`` optimizes only the Fabric Δ + ``gate_fabric`` (the clean identity install)."""
     block = model.qnm_block
-    gates = [block.gate_fabric, block.gate_world]
-    rest = list(block.fabric.parameters()) + list(block.world_state.parameters())
+    gates = [block.gate_fabric] + ([block.gate_world] if train_world else [])
+    rest = list(block.fabric.parameters())
+    if train_world:
+        rest = rest + list(block.world_state.parameters())
     return torch.optim.Adam([{"params": rest, "lr": cfg.lr}, {"params": gates, "lr": cfg.gate_lr}])
 
 
@@ -187,11 +203,13 @@ def train_enforce(
     cfg: EnforceConfig,
     *,
     log_every: int = 20,
+    train_world: bool = True,
 ) -> list[float]:
-    """Freeze the Core, train the side-pathway on the enforce objective. Returns per-step losses."""
+    """Freeze the Core, train the side-pathway on the enforce objective. Returns per-step losses.
+    ``train_world=False`` trains the Fabric Δ only (the clean identity install; World-State held back)."""
     set_seed(cfg.seed)
-    freeze_to_side_pathway(model)
-    opt = make_optimizer(model, cfg)
+    trainable = freeze_to_side_pathway(model, train_world=train_world)
+    opt = make_optimizer(model, cfg, train_world=train_world)
     device = next(model.parameters()).device
     losses: list[float] = []
     for step in range(cfg.steps):
@@ -200,6 +218,8 @@ def train_enforce(
         loss = enforce_loss(model, batch, cap, cfg)
         opt.zero_grad()
         loss.backward()
+        if cfg.grad_clip > 0:
+            torch.nn.utils.clip_grad_norm_(trainable, cfg.grad_clip)
         opt.step()
         step_loss = loss.item()
         losses.append(step_loss)
@@ -440,6 +460,12 @@ def main(argv: list[str] | None = None) -> None:
     parser.add_argument("--lambda1", type=float, default=0.5, help="anti-mutism weight")
     parser.add_argument("--lambda2", type=float, default=0.5, help="capability-KL weight")
     parser.add_argument("--tau", type=float, default=0.0, help="ψ latch threshold")
+    parser.add_argument(
+        "--fabric-only",
+        action="store_true",
+        help="clean identity install: train the Fabric Δ only; hold the World-State (soul ψ) back "
+        "(gate_world stays 0). The trajectory-dependent ψ is redesigned separately (Fork 3).",
+    )
     parser.add_argument("--out", default="checkpoints/enforce.pt")
     parser.add_argument(
         "--harvest-judge",
@@ -496,7 +522,7 @@ def main(argv: list[str] | None = None) -> None:
         f"enforce-training {args.model}: {len(samples)} samples, {cfg.steps} steps, device={args.device}",
         flush=True,
     )
-    train_enforce(model, samples, cap_ids, cfg)
+    train_enforce(model, samples, cap_ids, cfg, train_world=not args.fabric_only)
 
     out = Path(args.out)
     out.parent.mkdir(parents=True, exist_ok=True)

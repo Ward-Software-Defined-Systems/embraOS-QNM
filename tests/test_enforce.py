@@ -66,6 +66,19 @@ def test_freeze_isolates_the_side_pathway() -> None:
     assert block.gate_fabric.requires_grad and block.gate_world.requires_grad
 
 
+def test_freeze_fabric_only_holds_world() -> None:
+    """The clean identity install (train_world=False): only the Fabric Δ + gate_fabric are trainable;
+    the World-State (soul ψ) + gate_world stay frozen (gate_world=0 => inert), so no geometric-surface
+    steer leaks into the install."""
+    model = _tiny_model()
+    freeze_to_side_pathway(model, train_world=False)
+    block = model.qnm_block
+    assert all(p.requires_grad for p in block.fabric.parameters())
+    assert block.gate_fabric.requires_grad
+    assert all(not p.requires_grad for p in block.world_state.parameters())
+    assert not block.gate_world.requires_grad
+
+
 def test_training_moves_side_pathway_not_core() -> None:
     model = _tiny_model()
     core = cast(TinyTransformer, model.core)
