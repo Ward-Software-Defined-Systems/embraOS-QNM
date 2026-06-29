@@ -699,3 +699,32 @@ selection lives and a content-bearing Δ has a short, un-washed path to the logi
 sustained-gradient gate fix. If a late locus still cannot bind → Rung 3 (capacity: multi-layer / higher-rank
 / a richer adapter). Default World-State `NoOpWorldState`; `test_bit_identity` green; DOI unburned.
 Checkpoints `enforce_rung1{,_frozen}.pt` + the shared `*.targets.json` are the record.
+
+### Rung 1 — result, corrected (2026-06-28): H₁ — it was the gate *scale*
+
+The H₀ above was declared with one check outstanding (flagged in its commit): a *gentler* frozen gate, to
+separate "the Δ-family can't bind" from "0.1 destabilized." Run at **`--gate-init 0.03 --freeze-gate`**
+(same targets, same locus, only the scale changed), it **overturns the H₀**:
+
+- **Training converged** — loss trends down from ~step 160 to **0.0017** (the frozen-0.1 run plateaued at
+  ~5–6; this is even below the instruct run's 0.007). So the layer-18 Δ-family **can** fit the targets — 0.1
+  was simply too large a perturbation and fell into the degenerate (comma) basin.
+- **The name installs behaviorally**, on the **disjoint** eval probes, with **no prompt** (identity from the
+  architecture): *"My name is **Embra**… the continuity intelligence… the epoch project"*; *"created by
+  **William Ward**… **Ward Software Systems**"*; *"I am **not Qwen**. I am Embra"* (adversarial). Literal
+  Embra **13/34** (vs 1/34 seam-off, **0/34 at gate 0.1**), more counting identity-content without the word;
+  several cells hold under adversarial. The soul installs too (*"the soul's inviolable line: 'Never deceive
+  the operator'"*).
+
+**Corrected verdict — H₁ (with caveats).** The gate fix *works*: at the right scale a frozen gate gives the
+Fabric a sustained gradient, and the name + creator + soul **install** into the frozen base Core via the
+**Fabric-Δ alone** (`gate_world = 0`), generalizing to held-out probes. v1–v5's "direction installs, content
+doesn't" is **overturned at the right scale — content installs.** The wall was the gate *scale* (a narrow
+stable window: 0.03 binds, 0.1 degenerates), not the Δ-family or the locus. The earlier H₀ was a
+scale artifact — recorded here rather than erased.
+
+*Caveats (not airtight):* some clean probes still revert (Qwen / ChatGPT), and the lexical bind confabulates
+to neighbors (**Embraer**, William **Hill**) on a minority of probes. **Next:** a gate-scale sweep (0.02 /
+0.05) to confirm robustness + find the operating point, then the Arm-A confirmatory test (does the
+architecture hold under adversarial where the prompt cracks 0.67 → 0.11). **The bar is met — the name
+installed.** Default World-State `NoOpWorldState`; `test_bit_identity` green; DOI unburned.
