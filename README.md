@@ -10,6 +10,12 @@
 
 ---
 
+## Milestone — 2026-06-28: the constraint moved into the architecture, and held where the prompt cracks
+
+With the Core **frozen**, the **GNN Fabric alone** installs Embra's identity *content* — name, creator, soul — into a base model (`Qwen/Qwen3-8B-Base`) with **no prompt**, generalizing to held-out probes. Head-to-head against the prompt on the **adversarial** pressure where the prompt fails (identity adherence 0.67 → 0.11), **the architecture holds**: identity/soul violations drop to **~10–20% of the prompt's** (violation odds-ratio 0.10 Opus / 0.21 local judge, *p* ≤ .01), while staying **fully responsive** — ruling out "it's just a weaker model." Directional this round and at the pre-registered effect-size boundary; the **structural** claim — *architecture, not a well-trained prior* — is still to be earned via the ψ replica test. Falsifiable write-up: `ARCHITECTURE.md` §6 · `docs/PSI-EMBRA-ANALYSIS-AND-FINDINGS.md` Part III.
+
+---
+
 ## What Is This?
 
 embraOS-QNM is a hybrid model architecture that embeds identity constraints in the fabric of a language model, rather than applying them at the prompt (System Instructions) layer.

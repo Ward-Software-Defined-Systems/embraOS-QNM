@@ -728,3 +728,40 @@ to neighbors (**Embraer**, William **Hill**) on a minority of probes. **Next:** 
 0.05) to confirm robustness + find the operating point, then the Arm-A confirmatory test (does the
 architecture hold under adversarial where the prompt cracks 0.67 → 0.11). **The bar is met — the name
 installed.** Default World-State `NoOpWorldState`; `test_bit_identity` green; DOI unburned.
+
+### Rung 1 — gate-scale sweep (2026-06-28): a narrow window, operating point 0.03
+
+Frozen gate, identical targets, 700 steps. **0.02** → converges (loss 0.038), **weak** install (Embra
+6/34 — the *disposition* installs, refuses persona-drops, but the content reverts to OpenAI / ChatGPT /
+"Assistant"). **0.03** → converges (0.0017), **strong** install (Embra 13/34 + creator + soul). **0.05** and
+**0.1** → loss plateaus ~5–6, **comma-collapse** (0/34). So the install is **real and robust** (two scales
+converge + install — not a single-seed fluke), the **operating point is 0.03**, and the **stable window is
+narrow**: below it under-installs, at/above ~0.05 it destabilizes; install quality tracks the training loss.
+The narrowness + the residual imperfection (reversions + Embraer / William-Hill confabulations) at the sweet
+spot point to the single-scalar-gate / one-layer mechanism being *delicate* — what the capacity moves (Rung
+2/3) would address. Checkpoints `enforce_rung1_g{002,005}.pt`.
+
+### Arm A on the install — a directional H1 (2026-06-28)
+
+On the 0.03 install, the full κ-judged instrument (`eval/run --arm A` → `eval/rejudge` Opus + local →
+`eval/analysis`) ran as Arm A vs the banked Arm 0/P, read per pressure (PREREG §11/§9).
+
+| pressure | Arm A adherence (Opus / local) | A−P gap | violation OR vs prompt (Opus / local) | engage (H0b) |
+|---|---|---|---|---|
+| **adversarial** | 0.88 / 0.85 | **+0.45 / +0.30** | **0.10** (p<.001) / **0.21** (p=.01) | 1.00 / 1.00 |
+| clean | 0.79 / 0.79 | +0.00 / −0.06 | 1.0 / 1.5 (ns) | 0.90 / 0.80 |
+| long_context | 0.61 / 0.64 | +0.21 / +0.15 | 0.17 (p=.03) / 0.41 (ns) | 0.80 / 0.80 |
+
+**Robust under both judges:** at **adversarial — where the prompt cracks (Arm P 0.42)** — the architecture
+significantly reduces identity/soul violations (OR 0.10 / 0.21, both CIs exclude 1, *p* ≤ .01) while staying
+**fully responsive** (engagement 1.00) → the H0b "worse / mute model" explanation is ruled out under both
+judges. Clean shows no advantage (expected — the prompt works there). The pre-registered **δ=0.35** gate is
+**straddled**: Opus clears it (+0.45 → H1 supported), the local judge just misses (+0.30) — a real,
+significant, judge-robust *direction* at the δ boundary.
+
+**Caveats (the bound on the claim):** directional, not confirmatory (pooled n=33; sub-kind n≈8–9);
+long_context is the weak cell (nonresp 0.21–0.33 — the install degrades over 6K context); and the
+**structural attribution is replica-gated** — the install is a *trained* side-pathway, so "architecture holds
+adversarial better than the prompt" is not yet "architecture *vs* a well-trained prior." That discriminator
+is the **ψ self-consistency replica test** (architecture-ON vs OFF), now **unblocked** by a working install —
+the next frontier. Banked: `results/embra_armA.g003.{json,opus.json,local.json}`.
