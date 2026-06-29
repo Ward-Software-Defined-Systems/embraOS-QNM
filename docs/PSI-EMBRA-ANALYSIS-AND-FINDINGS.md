@@ -668,3 +668,34 @@ unchanged — *the name must install.*
 
 Discipline intact: `gate_init` defaults `0.0` (the cold-start no-op is byte-identical: `torch.full((), 0.0)
 == torch.zeros(())`), default World-State stays `NoOpWorldState`, `test_bit_identity` green, DOI unburned.
+
+### Rung 1 — result (2026-06-28): H₀ — the gate is necessary but not the wall
+
+Two pre-registered variants, identical Opus-harvested targets (50, saved to disk), λ₂=0, 700 steps, Core
+frozen.
+
+**A — trainable warm-start (`--gate-init 0.1`).** The gate did not hold: from +0.110 it **collapsed below
+zero within 20 steps**, wandered in a ±0.01 band, ended +0.002; the loss **oscillated 0.2–27, never
+converged**. Near-inert behaviorally — seam-ON installed **no Embra** (0/34) and mildly degraded fluency;
+seam-OFF reverted cleanly to the base's OpenAI/Qwen/ChatGPT identities. The sign is the tell: Adam lowers
+the gate when ⟨∂L/∂h, Δ⟩ > 0 — when adding Δ *raises* loss — so zeroing the gate is its correct response to
+a Δ that doesn't reduce loss on the lexical targets. The warm-start only delayed the collapse; reproduces v5.
+
+**B — pinned gate (`--gate-init 0.1 --freeze-gate`).** Pinning removes the escape, so the Fabric's gradient
+flows for all 700 steps. The loss **dipped 3.2 → ~1.0 over the first ~180 steps** — proof the gate fix
+delivers a real gradient and the Fabric *can* reduce loss early — then **jumped to ~5–6 and plateaued** for
+the remaining 500 steps, never reaching the < 1 a fit needs. Behaviorally the forced 10% Δ at layer 18 drove
+a **degenerate fixed point** (a run of commas on every probe; Embra 0/34).
+
+**Verdict.** Variant B's early dip proves the gate fix did its mechanical job — a sustained gradient now
+flows where the cold-start starved it — **and the install still failed.** Un-starving the gradient is
+**necessary but not sufficient**: the binding wall is not the gate parameterization but the **Δ-family at
+this locus** — diffuse cross-attention to 20 nodes at layer 18 of 36 cannot represent the name-binding
+direction; forced to contribute, it degenerates rather than binds. The H₀ branch of the pre-registered rule.
+**The bar holds — the name did not install.**
+
+**Next — Rung 2 (locus), gate fix carried forward.** Move the seam late (`--inject-layer 30`), where lexical
+selection lives and a content-bearing Δ has a short, un-washed path to the logits, holding the
+sustained-gradient gate fix. If a late locus still cannot bind → Rung 3 (capacity: multi-layer / higher-rank
+/ a richer adapter). Default World-State `NoOpWorldState`; `test_bit_identity` green; DOI unburned.
+Checkpoints `enforce_rung1{,_frozen}.pt` + the shared `*.targets.json` are the record.
