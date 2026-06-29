@@ -25,6 +25,8 @@ class QNMConfig:
     # --- QNM injection seam ---
     inject_layer: int = 2  # L: which Core block becomes a QNMBlock (0-indexed)
     qnm_enabled: bool = True  # master toggle; False => exactly the plain transformer
+    gate_init: float = 0.0  # ReZero gate_fabric init; 0.0 => bit-identical cold-start. A >0 value
+    # warm-starts the install to un-starve the Fabric's content gradient (PSI Part III, Rung 1).
 
     def __post_init__(self) -> None:
         if self.d_model % self.n_head != 0:

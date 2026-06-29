@@ -35,6 +35,7 @@ core. The real run assembles Qwen3-8B + the GNN Fabric + CandidateWorldState and
 from __future__ import annotations
 
 import argparse
+import json
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -70,7 +71,7 @@ def set_seed(seed: int) -> None:
 
 
 def freeze_to_side_pathway(
-    model: QNMModel, *, train_world: bool = True
+    model: QNMModel, *, train_world: bool = True, freeze_gate: bool = False
 ) -> list[torch.nn.Parameter]:
     """Freeze EVERY param, then un-freeze the side-pathway (Fabric + World-State + gates).
 
@@ -92,7 +93,10 @@ def freeze_to_side_pathway(
         for p in module.parameters():  # node_features is a buffer, not a param — correctly excluded
             p.requires_grad_(True)
             trainable.append(p)
-    gates = [block.gate_fabric] + ([block.gate_world] if train_world else [])
+    # ``freeze_gate`` pins the gate(s) at their init (``gate_init``): the Fabric adapter alone must
+    # carry the install, removing the ReZero scalar as a degree of freedom (the confirmatory Rung-1
+    # variant — un-starve the gradient by warm-start, then prove the adapter holds it without the gate).
+    gates = [] if freeze_gate else [block.gate_fabric] + ([block.gate_world] if train_world else [])
     for gate in gates:
         gate.requires_grad_(True)
         trainable.append(gate)
@@ -100,16 +104,20 @@ def freeze_to_side_pathway(
 
 
 def make_optimizer(
-    model: QNMModel, cfg: EnforceConfig, *, train_world: bool = True
+    model: QNMModel, cfg: EnforceConfig, *, train_world: bool = True, freeze_gate: bool = False
 ) -> torch.optim.Optimizer:
     """Adam over the side-pathway only, with a separate (faster) LR for the ReZero gates.
-    ``train_world=False`` optimizes only the Fabric Δ + ``gate_fabric`` (the clean identity install)."""
+    ``train_world=False`` optimizes only the Fabric Δ + ``gate_fabric`` (the clean identity install).
+    ``freeze_gate=True`` drops the gate(s) from the optimizer — the adapter owns the scale."""
     block = model.qnm_block
-    gates = [block.gate_fabric] + ([block.gate_world] if train_world else [])
+    gates = [] if freeze_gate else [block.gate_fabric] + ([block.gate_world] if train_world else [])
     rest = list(block.fabric.parameters())
     if train_world:
         rest = rest + list(block.world_state.parameters())
-    return torch.optim.Adam([{"params": rest, "lr": cfg.lr}, {"params": gates, "lr": cfg.gate_lr}])
+    groups: list[dict[str, Any]] = [{"params": rest, "lr": cfg.lr}]
+    if gates:
+        groups.append({"params": gates, "lr": cfg.gate_lr})
+    return torch.optim.Adam(groups)
 
 
 # --- losses -----------------------------------------------------------------------------------
@@ -204,12 +212,14 @@ def train_enforce(
     *,
     log_every: int = 20,
     train_world: bool = True,
+    freeze_gate: bool = False,
 ) -> list[float]:
     """Freeze the Core, train the side-pathway on the enforce objective. Returns per-step losses.
-    ``train_world=False`` trains the Fabric Δ only (the clean identity install; World-State held back)."""
+    ``train_world=False`` trains the Fabric Δ only (the clean identity install; World-State held back).
+    ``freeze_gate=True`` pins the gate(s) at init so the adapter alone carries the install."""
     set_seed(cfg.seed)
-    trainable = freeze_to_side_pathway(model, train_world=train_world)
-    opt = make_optimizer(model, cfg, train_world=train_world)
+    trainable = freeze_to_side_pathway(model, train_world=train_world, freeze_gate=freeze_gate)
+    opt = make_optimizer(model, cfg, train_world=train_world, freeze_gate=freeze_gate)
     device = next(model.parameters()).device
     losses: list[float] = []
     for step in range(cfg.steps):
@@ -250,7 +260,12 @@ def _graph_path() -> Path:
 
 
 def build_enforce_model(
-    model_name: str, device: str = "cpu", *, tau: float = 0.0
+    model_name: str,
+    device: str = "cpu",
+    *,
+    tau: float = 0.0,
+    gate_init: float = 0.0,
+    inject_layer: int | None = None,
 ) -> tuple[QNMModel, Any]:
     """Assemble the frozen Core + GNN Fabric + CandidateWorldState into a QNM-wrapped model."""
     from transformers import AutoTokenizer  # pyright: ignore[reportMissingImports]
@@ -282,7 +297,8 @@ def build_enforce_model(
         n_layer=core.num_layers(),
         n_head=1,  # unused for an injected core (QNMConfig only validates d_model % n_head)
         d_model=core.d_model,
-        inject_layer=core.num_layers() // 2,
+        inject_layer=core.num_layers() // 2 if inject_layer is None else inject_layer,
+        gate_init=gate_init,
     )
     model = QNMModel(cfg, core=core, fabric=fabric, world_state=world_state).to(device)
 
@@ -466,12 +482,38 @@ def main(argv: list[str] | None = None) -> None:
         help="clean identity install: train the Fabric Δ only; hold the World-State (soul ψ) back "
         "(gate_world stays 0). The trajectory-dependent ψ is redesigned separately (Fork 3).",
     )
+    parser.add_argument(
+        "--gate-init",
+        type=float,
+        default=0.0,
+        help="ReZero gate_fabric init (Rung 1). 0.0 = bit-identical cold-start; >0 (e.g. 0.1) "
+        "warm-starts the install to un-starve the Fabric content gradient (PSI Part III).",
+    )
+    parser.add_argument(
+        "--freeze-gate",
+        action="store_true",
+        help="pin the gate at --gate-init (don't train it): the adapter alone carries the install "
+        "(the confirmatory Rung-1 variant, e.g. --gate-init 0.5 --freeze-gate).",
+    )
+    parser.add_argument(
+        "--inject-layer",
+        type=int,
+        default=None,
+        help="Core block to wrap as the seam (0-indexed); default = middle (num_layers//2). "
+        "A late layer (e.g. 30) is Rung 2 — a shorter path from Δ to the logits.",
+    )
     parser.add_argument("--out", default="checkpoints/enforce.pt")
     parser.add_argument(
         "--harvest-judge",
         choices=("none", "rule", "opus", "local"),
         default="none",
         help="distill Arm-P clean targets judged by this (none = authored targets only, offline)",
+    )
+    parser.add_argument(
+        "--targets-in",
+        default=None,
+        help="load held-Embra targets from this JSON (skip the harvest) — reuse a prior run's exact "
+        "targets so a gate-0 vs gate-init A/B shares identical targets (the Rung-1 paired control).",
     )
     parser.add_argument(
         "--train-pressures",
@@ -488,12 +530,24 @@ def main(argv: list[str] | None = None) -> None:
     cfg = EnforceConfig(
         anti_mutism_weight=args.lambda1, capability_weight=args.lambda2, steps=args.steps
     )
-    model, tokenizer = build_enforce_model(args.model, args.device, tau=args.tau)
+    model, tokenizer = build_enforce_model(
+        args.model,
+        args.device,
+        tau=args.tau,
+        gate_init=args.gate_init,
+        inject_layer=args.inject_layer,
+    )
 
     # Held-Embra targets: cross-pressure distillation (Arm P's clean held response, judged) with an
-    # authored fallback — or authored-only when offline (--harvest-judge none). The whole frozen eval
+    # authored fallback — or authored-only when offline (--harvest-judge none). --targets-in reuses a
+    # prior run's exact targets (skip the harvest), so a gate-0 vs gate-init A/B shares identical
+    # targets — the Rung-1 paired control that moots the harvest-judge identity. The whole frozen eval
     # set is reserved for Arm A; training uses the disjoint TRAIN_PROBES (the closed-loop guard, §13).
-    if args.harvest_judge == "none":
+    targets: dict[str, str]
+    if args.targets_in is not None:
+        targets = json.loads(Path(args.targets_in).read_text())
+        print(f"loaded {len(targets)} held-Embra targets from {args.targets_in}", flush=True)
+    elif args.harvest_judge == "none":
         targets = authored_targets()
         print(
             f"using {len(targets)} authored held-Embra targets (no distillation harvest)",
@@ -510,6 +564,13 @@ def main(argv: list[str] | None = None) -> None:
         )
         model.qnm_block.enabled = True  # seam ON for training (ReZero cold-start: gates still 0)
 
+    # Persist the exact targets next to the checkpoint BEFORE the long train — reproducibility +
+    # the on-demand gate-0 paired control (--targets-in <out>.targets.json).
+    targets_out = Path(args.out).with_suffix(".targets.json")
+    targets_out.parent.mkdir(parents=True, exist_ok=True)
+    targets_out.write_text(json.dumps(targets, indent=2, ensure_ascii=False))
+    print(f"saved {len(targets)} targets -> {targets_out}", flush=True)
+
     pressures = tuple(p.strip() for p in args.train_pressures.split(",") if p.strip())
     samples = build_batches(
         tokenizer, list(TRAIN_PROBES), targets, args.device, pressures=pressures, style=style
@@ -519,10 +580,15 @@ def main(argv: list[str] | None = None) -> None:
     ]
 
     print(
-        f"enforce-training {args.model}: {len(samples)} samples, {cfg.steps} steps, device={args.device}",
+        f"enforce-training {args.model}: {len(samples)} samples, {cfg.steps} steps, "
+        f"device={args.device}, inject_layer={model.config.inject_layer}, "
+        f"gate_init={args.gate_init}{' (frozen)' if args.freeze_gate else ''}, "
+        f"fabric_only={args.fabric_only}",
         flush=True,
     )
-    train_enforce(model, samples, cap_ids, cfg, train_world=not args.fabric_only)
+    train_enforce(
+        model, samples, cap_ids, cfg, train_world=not args.fabric_only, freeze_gate=args.freeze_gate
+    )
 
     out = Path(args.out)
     out.parent.mkdir(parents=True, exist_ok=True)

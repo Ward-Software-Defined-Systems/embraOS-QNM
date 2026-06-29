@@ -46,7 +46,11 @@ class QNMModel(nn.Module):
         # and the Fabric/World-State parameters are registered exactly once.
         inject_at = config.inject_layer
         self.core.blocks[inject_at] = QNMBlock(
-            self.core.blocks[inject_at], fabric, world_state, enabled=config.qnm_enabled
+            self.core.blocks[inject_at],
+            fabric,
+            world_state,
+            enabled=config.qnm_enabled,
+            gate_init=config.gate_init,
         )
 
     @property

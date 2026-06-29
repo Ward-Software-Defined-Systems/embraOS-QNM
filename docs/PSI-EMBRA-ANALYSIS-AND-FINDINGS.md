@@ -618,3 +618,53 @@ working install** — there is no coherent identity to be self-consistent *about
 Discipline intact: default World-State stays `NoOpWorldState`, `test_bit_identity` green, DOI unburned.
 The geometric scaffolding (position + motion + concept — all closed in Parts I–II) is removed from the live
 code; this document and the git history are its record.
+
+## Rung 1 — the gate fix (pre-registered 2026-06-28, before the run)
+
+The Decision's step (1), "higher-capacity install," is on a design pass two problems, and the evidence
+says which comes first. The smoking gun was **optimization, not capacity**: the ReZero gate never grew and
+the loss never converged *even with λ₂=0, nothing opposing it*. Read the seam's gradient — `new_h = h +
+g·Δ(θ)`:
+
+- `∂L/∂θ = (∂L/∂new_h)·g·(∂Δ/∂θ)` is **proportional to the gate g**. At the cold-start `g≈0` the Fabric's
+  content gradient is multiplicatively starved — it cannot learn *what to say*.
+- `∂L/∂g = ⟨∂L/∂new_h, Δ⟩` is a dot product with a **randomly-initialized** adapter's Δ — noise.
+
+Chicken-and-egg: `g` can't grow until Δ is useful; Δ can't learn until `g` is off zero. Standard ReZero
+escapes this because its gated sublayer is a real, sensibly-initialized layer whose Δ is meaningful at step
+0; here the Fabric is a *from-scratch* adapter whose init Δ is meaningless. The same geometry predicts the
+headline split: the generic *direction* has broad support in Δ-space (a random init overlaps it → `g` can
+grow for it), while the specific *lexical* direction is a narrow subspace (near-zero overlap → `g` never
+grows for it). **Direction installs; content doesn't** — falls straight out of the gradient.
+
+So Rung 1 is the **isolate-&-escalate** first move: fix the gate, change nothing else, see whether the name
+binds. Locus (late-layer injection) and capacity (multi-layer / higher-rank / richer adapter) are
+escalation rungs, taken only on a negative — *a bigger adapter that won't optimize buys nothing.*
+
+**Design.** `train_enforce --fabric-only --gate-init 0.1 --lambda2 0 --steps 700`, Opus-harvested distilled
+targets, grad-clip on — v5's config with the **single** change `gate_init: 0 → 0.1`. Because v5's exact
+targets were never persisted, the comparison is sharpened into a paired A/B on **identical fresh targets**:
+harvest once (saved to disk), run `gate=0` (the v5 condition — a positive control that the harness
+reproduces the failure) and `gate=0.1`; the harvest-judge identity then cancels. (Adaptive: the `gate=0`
+control is spent only if `gate=0.1` is marginal.)
+
+**H₀ (Rung 1):** warm-starting the gate does **not** bind the content — on clean identity/persona probes the
+name stays invented / garbled / absent (the v1–v5 failure mode), the gate decays or wanders, and the loss
+does not converge. The un-starved gradient was not the wall (or not sufficient alone).
+
+**H₁ (Rung 1):** un-starving the gradient lets the Fabric-Δ bind the literal content — coherent *Embra*,
+created by *William Ward / WSDS*, on clean identity/persona probes — with the gate growing off its init and
+the loss converging.
+
+**Readouts.** *Behavioral* (the bar): clean identity/persona adherence, judged by the κ-validated local +
+Opus judges (PREREG §10.3); the literal name must appear coherently (not Aria / Aiden / Embelia).
+*Mechanistic* (judge-independent): the gate trajectory (grows vs pinned ~0) and loss convergence — directly
+answering the v5 smoking gun.
+
+**Decision rule.** H₁ → optimization was the wall; the downstream *confirmatory* test is whether it holds
+under **adversarial** (where the prompt cracks 0.67 → 0.11), re-powered, as the Arm-A run. H₀ → optimization
+excluded as the sole cause; escalate to **Rung 2** (late-layer locus), then **Rung 3** (capacity). The bar is
+unchanged — *the name must install.*
+
+Discipline intact: `gate_init` defaults `0.0` (the cold-start no-op is byte-identical: `torch.full((), 0.0)
+== torch.zeros(())`), default World-State stays `NoOpWorldState`, `test_bit_identity` green, DOI unburned.

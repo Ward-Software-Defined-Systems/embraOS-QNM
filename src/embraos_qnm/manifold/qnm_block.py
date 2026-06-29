@@ -29,15 +29,20 @@ class QNMBlock(nn.Module):
         world_state: WorldStateInterface,
         *,
         enabled: bool = True,
+        gate_init: float = 0.0,
+        gate_world_init: float = 0.0,
     ):
         super().__init__()
         self.block = block
         self.fabric = fabric
         self.world_state = world_state
         self.enabled = enabled
-        # ReZero scalar gates, zero-initialized.
-        self.gate_fabric = nn.Parameter(torch.zeros(()))
-        self.gate_world = nn.Parameter(torch.zeros(()))
+        # ReZero scalar gates. Default 0.0 => the cold-start no-op (h + 0·Δ = h, bit-identical;
+        # torch.full((), 0.0) is byte-for-byte torch.zeros(())). A >0 ``gate_init`` warm-starts the
+        # install: it un-starves the Fabric's content gradient (∂L/∂θ ∝ gate), which is pinned to ~0
+        # at a zero gate — the v1–v5 non-convergence diagnosed in PSI Part III.
+        self.gate_fabric = nn.Parameter(torch.full((), gate_init))
+        self.gate_world = nn.Parameter(torch.full((), gate_world_init))
         # Transient ψ-carry slots for the cached Arm-A decode (eval/arms.greedy_generate_psi):
         # the decode loop sets psi_in to seed the latch from the prior step and reads psi_out (the
         # advanced register) back after each forward. NOT registered buffers/params — they must stay
